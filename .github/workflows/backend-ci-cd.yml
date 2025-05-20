@@ -1,0 +1,118 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches:
+      - main # main 브랜치에 푸시될 때 실행 (또는 develop 등 주 개발 브랜치)
+    paths:
+      - 'apps/backend/**' # apps/backend/ 디렉토리 내 파일 변경 시에만 실행
+      - '.github/workflows/backend-ci-cd.yml' # 이 워크플로우 파일 변경 시에도 실행
+
+jobs:
+  build_and_test:
+    name: Build and Test Backend
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x] # 사용할 Node.js 버전
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: code/apps/backend/package-lock.json
+
+    - name: Install backend dependencies
+      working-directory: ./code/apps/backend
+      run: npm install
+
+    - name: Run linter
+      working-directory: ./code/apps/backend
+      run: npm run lint # Assumes 'lint' script is defined in package.json
+
+    - name: Build TypeScript project
+      working-directory: ./code/apps/backend
+      run: npm run build # Assumes 'build' script (e.g., tsc) is defined
+
+    - name: Run backend tests
+      working-directory: ./code/apps/backend
+      env:
+        NODE_ENV: test
+        # DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }} # If needed for tests
+      run: npm test # Assumes 'test' script is defined
+
+    - name: Archive production artifacts
+      if: success() # Archive only if build and tests are successful
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-build
+        path: |
+          code/apps/backend/dist
+          code/apps/backend/node_modules
+          code/apps/backend/package.json
+          code/apps/backend/package-lock.json
+          # Add ecosystem.config.js if it's in apps/backend and needed for runtime
+          code/apps/backend/ecosystem.config.js 
+
+  deploy_to_production:
+    name: Deploy Backend to Production
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code (for .env creation, optional if SERVER_PROJECT_PATH is clean)
+      uses: actions/checkout@v4
+      # This checkout is mainly if you want to ensure the .env is placed correctly relative to project structure
+      # or if you have other deployment scripts in the repo.
+      # If SERVER_PROJECT_PATH is managed purely by artifacts, this might not be strictly needed for code.
+
+    - name: Download backend build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-build
+        path: ./backend-deploy # Download to a temporary directory
+
+    - name: Deploy to server via SSH
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: 22
+        script: |
+          set -e
+          echo "Setting up deployment directory ${{ secrets.SERVER_PROJECT_PATH }}/apps/backend"
+          # SERVER_PROJECT_PATH should point to the root of 'code' directory on server
+          # We will create/clean the apps/backend directory within it
+          mkdir -p ${{ secrets.SERVER_PROJECT_PATH }}/apps/backend 
+          
+          echo "Copying built files to server"
+          # Copy from the downloaded artifact path to the target server path
+          # Ensure backend-deploy directory (from download-artifact) exists
+          # Using rsync for efficient transfer and deletion of old files
+          rsync -avz --delete ./backend-deploy/ ${{ secrets.SERVER_PROJECT_PATH }}/apps/backend/
+          # The above rsync copies the contents of backend-deploy (dist, node_modules, etc.)
+          # into apps/backend/ on the server.
+
+          echo "Creating .env file in apps/backend"
+          echo "${{ secrets.PRODUCTION_ENV_FILE_CONTENT }}" > ${{ secrets.SERVER_PROJECT_PATH }}/apps/backend/.env
+          
+          echo "Changing to backend directory on server"
+          cd ${{ secrets.SERVER_PROJECT_PATH }}/apps/backend
+          
+          echo "Restarting application with pm2"
+          # Assumes ecosystem.config.js is part of the artifact and now in apps/backend
+          if [ -f ecosystem.config.js ]; then
+            pm2 startOrRestart ecosystem.config.js --env production
+          else
+            echo "PM2 ecosystem.config.js not found. Attempting to restart by app name if configured."
+            # pm2 restart backend-app-name # Replace with your actual app name if not using ecosystem file
+          fi
+          echo "Deployment successful" 

@@ -1,0 +1,6 @@
+# Database connection string for Prisma
+DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.suygygqtmolebrlumouv.supabase.co:5432/postgres"
+
+# Replace YOUR_PASSWORD with your actual Supabase database password
+# You can find the connection string in your Supabase dashboard:
+# Database -> Connection Info -> URI 

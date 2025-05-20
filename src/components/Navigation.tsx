@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { isAuthenticated, getCurrentUser, User } from '@/services/auth.service';
 
 // Import our new components
 import NavLinks from './navigation/NavLinks';
@@ -13,11 +13,25 @@ import MobileMenu from './navigation/MobileMenu';
 const Navigation = () => {
   const isMobile = useIsMobile();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   
   // Check if user is logged in when component mounts
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    setIsLoggedIn(!!user);
+    const checkAuth = async () => {
+      const isAuth = isAuthenticated();
+      setIsLoggedIn(isAuth);
+      
+      if (isAuth) {
+        try {
+          const userData = await getCurrentUser();
+          setCurrentUser(userData);
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+        }
+      }
+    };
+    
+    checkAuth();
   }, []);
   
   return (
@@ -39,6 +53,7 @@ const Navigation = () => {
             isMobile={false} 
             isLoggedIn={isLoggedIn} 
             setIsLoggedIn={setIsLoggedIn} 
+            currentUser={currentUser}
           />
           
           <div className="relative">
@@ -58,7 +73,8 @@ const Navigation = () => {
         <AuthButtons 
           isMobile={true} 
           isLoggedIn={isLoggedIn} 
-          setIsLoggedIn={setIsLoggedIn} 
+          setIsLoggedIn={setIsLoggedIn}
+          currentUser={currentUser}
         />
       )}
     </>

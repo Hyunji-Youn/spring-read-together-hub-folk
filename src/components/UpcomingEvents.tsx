@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,7 +36,7 @@ const UpcomingEvents = () => {
           <Card key={event.id} className="border border-bookish-maroon/20 bg-bookish-light hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="text-xl font-serif text-bookish-maroon">{event.title}</CardTitle>
-              <CardDescription className="space-y-1 pt-2">
+              <div className="text-sm text-muted-foreground space-y-1 pt-2">
                 <div className="flex items-center text-bookish-dark/80">
                   <Calendar className="h-4 w-4 mr-2" />
                   <span>{event.date}</span>
@@ -50,7 +49,7 @@ const UpcomingEvents = () => {
                   <MapPin className="h-4 w-4 mr-2" />
                   <span>{event.location}</span>
                 </div>
-              </CardDescription>
+              </div>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-bookish-dark/80">{event.description}</p>
