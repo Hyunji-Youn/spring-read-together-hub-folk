@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+import dotenv from 'dotenv';
 import path from 'path';
 
 // 환경변수 로드
@@ -41,5 +41,5 @@ export const env = {
   
   // 보안 설정
   RATE_LIMIT_WINDOW_MS: 60 * 1000, // 1분 (ms 단위)
-  RATE_LIMIT_MAX: 5, // 5 요청/분
+  RATE_LIMIT_MAX: 20, // 20 요청/분 (PRD 5.4 기준 업데이트됨)
 }; 

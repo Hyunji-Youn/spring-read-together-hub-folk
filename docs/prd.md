@@ -119,7 +119,7 @@
 - Content Security Policy: Implement CSP headers to prevent XSS attacks
 
 ### 5.4 Types of Rate Limiting 
-- Fixed Window Limiting: 5 per minute
+- Fixed Window Limiting: 20 per minute(수정됨)
 
 ### 5.5 페이지 로딩 성능 
 - 페이지 로딩 시간: 주요 페이지 2초 이내
