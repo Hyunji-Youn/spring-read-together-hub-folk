@@ -1,65 +1,92 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyAccessToken } from '../modules/auth/services/token.service';
+import { jwtService } from '../modules/auth/services/jwt.service';
+import { RoleName } from '@prisma/client';
 
-// Request 인터페이스 확장
+/**
+ * Extended Request interface to include user data
+ * Added after JWT verification with RS256 algorithm
+ */
 declare global {
   namespace Express {
     interface Request {
       user?: {
-        userId: number;
-        role: string;
+        id: number;
+        role: RoleName;
+        email?: string;
+        username?: string;
       };
     }
   }
 }
 
 /**
- * JWT 인증 미들웨어
+ * JWT Authentication Middleware
+ * Verifies tokens using RS256 algorithm through jwtService
  */
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    // Authorization 헤더에서 토큰 추출
+    // Extract token from Authorization header
     const authHeader = req.headers.authorization;
+    console.log('Auth middleware - Authorization header:', authHeader ? 'Present' : 'Missing');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ success: false, message: '인증 토큰이 필요합니다.' });
+    const token = jwtService.extractTokenFromHeader(authHeader);
+    
+    if (!token) {
+      console.log('Auth middleware - No token found in request');
+      return res.status(401).json({ success: false, message: 'Authentication token required' });
     }
     
-    const token = authHeader.split(' ')[1];
+    console.log('Auth middleware - Verifying token with jwtService (RS256)');
     
-    // 토큰 검증
-    const decoded = await verifyAccessToken(token);
+    // Verify token (using RS256 algorithm in jwtService)
+    const payload = await jwtService.verifyToken(token);
     
-    if (!decoded) {
-      return res.status(401).json({ success: false, message: '유효하지 않은 토큰입니다.' });
-    }
+    console.log('Auth middleware - Token verified successfully for user:', payload.sub);
     
-    // 요청 객체에 사용자 정보 추가
+    // Add user information to request object
     req.user = {
-      userId: decoded.userId,
-      role: decoded.role,
+      id: payload.sub,
+      role: payload.role as RoleName,
+      email: payload.email,
+      username: payload.username
     };
     
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    res.status(401).json({ success: false, message: '인증에 실패했습니다.' });
+    res.status(401).json({ success: false, message: 'Authentication failed' });
   }
 }
 
 /**
- * 특정 역할 권한 확인 미들웨어 생성 함수
+ * Role Guard Factory
+ * Creates middleware to check user roles after JWT authentication
  */
-export function roleGuard(allowedRoles: string[]) {
+export function roleGuard(allowedRoles: RoleName[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ success: false, message: '인증이 필요합니다.' });
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
     
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: '접근 권한이 없습니다.' });
+      return res.status(403).json({ success: false, message: 'Access denied' });
     }
     
     next();
   };
-} 
+}
+
+/**
+ * Helper middleware to restrict routes to admin only
+ */
+export const adminOnly = roleGuard([RoleName.Admin]);
+
+/**
+ * Helper middleware to restrict routes to librarians and admins
+ */
+export const librarianOrAdminOnly = roleGuard([RoleName.Admin, RoleName.Librarian]);
+
+/**
+ * Helper middleware to restrict routes to members, librarians and admins
+ */
+export const membersOnly = roleGuard([RoleName.Admin, RoleName.Librarian, RoleName.Member]); 

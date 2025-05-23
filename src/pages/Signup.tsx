@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Mail, User, Lock, Phone, CheckCheck } from 'lucide-react';
+import { Mail, User, Key, Phone, CheckCheck } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -30,7 +30,9 @@ const signupFormSchema = z.object({
     message: "Please enter a valid email address."
   }),
   phone_number: z.string().regex(/^\d{10,11}$/, 'Please enter a 10-11 digit phone number.'),
-  password: z.string().min(1, { message: "Registration code is required." }), // General validation, specific check in service
+  registration_password: z.string().min(8, { 
+    message: "Registration code must be at least 8 characters." 
+  }),
   memberType: z.enum(['Member', 'Librarian'], {
     required_error: "Please select a member type."
   }),
@@ -50,7 +52,7 @@ const Signup = () => {
       name: "",
       email: "",
       phone_number: "",
-      password: "", // User will type the registration code here
+      registration_password: "",
       memberType: "Member",
       agreeTerms: false
     }
@@ -63,9 +65,12 @@ const Signup = () => {
         name: values.name,
         email: values.email,
         phone_number: values.phone_number,
-        password: values.password, // This is the registration code entered by user
-        requested_librarian_role: values.memberType === 'Librarian',
+        registration_password: values.registration_password,
+        request_librarian_role: values.memberType === 'Librarian',
+        accept_terms: values.agreeTerms
       };
+
+      console.log('Submitting registration with payload:', { ...payload, registration_password: '***REDACTED***' });
 
       const response = await registerService(payload);
 
@@ -77,16 +82,32 @@ const Signup = () => {
           navigate('/login');
         }, 2000);
       } else {
-        toast.error("Registration failed", {
-          description: response.message || "An unknown error occurred."
-        });
+        // Check for specific error messages
+        if (response.errors && Array.isArray(response.errors)) {
+          // Display field-specific validation errors
+          response.errors.forEach(err => {
+            toast.error(`${err.field}: ${err.message}`);
+          });
+        } else {
+          toast.error("Registration failed", {
+            description: response.message || "An unknown error occurred."
+          });
+        }
       }
     } catch (error: any) {
       console.error("Signup error:", error);
-      const errorMessage = error.response?.data?.message || error.message || "An error occurred during registration.";
-      toast.error("Registration failed", {
-        description: errorMessage
-      });
+      
+      // Check for validation errors in the response
+      if (error.response?.data?.errors && Array.isArray(error.response.data.errors)) {
+        error.response.data.errors.forEach((err: any) => {
+          toast.error(`${err.field}: ${err.message}`);
+        });
+      } else {
+        const errorMessage = error.response?.data?.message || error.message || "An error occurred during registration.";
+        toast.error("Registration failed", {
+          description: errorMessage
+        });
+      }
     }
   };
 
@@ -178,13 +199,13 @@ const Signup = () => {
                       <FormMessage />
                     </FormItem>} />
                 
-                <FormField control={form.control} name="password" render={({
+                <FormField control={form.control} name="registration_password" render={({
                 field
               }) => <FormItem>
-                      <FormLabel>Registration Code</FormLabel> {/* Changed from Password to Registration Code */}
+                      <FormLabel>Registration Code</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <Lock className="absolute left-3 top-3 h-4 w-4 text-bookish-maroon/70" />
+                          <Key className="absolute left-3 top-3 h-4 w-4 text-bookish-maroon/70" />
                           <Input 
                             placeholder="Enter the registration code" 
                             className="pl-10" 
@@ -194,6 +215,9 @@ const Signup = () => {
                         </div>
                       </FormControl>
                       <FormMessage />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Please contact a librarian or club member to get the registration code. This will also be used as your password to log in.
+                      </p>
                     </FormItem>} />
                                 
                 <FormField control={form.control} name="agreeTerms" render={({

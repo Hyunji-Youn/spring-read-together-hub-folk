@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { isAuthenticated, getCurrentUser, User } from '@/services/auth.service';
+import { useAuth } from '@/contexts/auth-context';
 
 // Import our new components
 import NavLinks from './navigation/NavLinks';
@@ -12,27 +12,7 @@ import MobileMenu from './navigation/MobileMenu';
 
 const Navigation = () => {
   const isMobile = useIsMobile();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  
-  // Check if user is logged in when component mounts
-  useEffect(() => {
-    const checkAuth = async () => {
-      const isAuth = isAuthenticated();
-      setIsLoggedIn(isAuth);
-      
-      if (isAuth) {
-        try {
-          const userData = await getCurrentUser();
-          setCurrentUser(userData);
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-        }
-      }
-    };
-    
-    checkAuth();
-  }, []);
+  const { user, isAuthenticated } = useAuth();
   
   return (
     <>
@@ -51,9 +31,8 @@ const Navigation = () => {
         <div className="flex items-center gap-2">
           <AuthButtons 
             isMobile={false} 
-            isLoggedIn={isLoggedIn} 
-            setIsLoggedIn={setIsLoggedIn} 
-            currentUser={currentUser}
+            isLoggedIn={isAuthenticated}
+            currentUser={user}
           />
           
           <div className="relative">
@@ -72,9 +51,8 @@ const Navigation = () => {
       {isMobile && (
         <AuthButtons 
           isMobile={true} 
-          isLoggedIn={isLoggedIn} 
-          setIsLoggedIn={setIsLoggedIn}
-          currentUser={currentUser}
+          isLoggedIn={isAuthenticated}
+          currentUser={user}
         />
       )}
     </>

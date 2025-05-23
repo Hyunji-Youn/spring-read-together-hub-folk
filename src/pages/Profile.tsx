@@ -3,13 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Label } from '../components/ui/label';
 import { Skeleton } from '../components/ui/skeleton';
 import { Badge } from '../components/ui/badge';
-import { Calendar, User, Mail, Phone, AlertTriangle, Edit } from 'lucide-react';
+import { Calendar, User, Mail, Phone, AlertTriangle, Edit, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { AxiosError } from 'axios';
 import { Button } from '../components/ui/button';
 import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 const ApplicationStatusBadge = ({ status }: { status: string }) => {
   switch (status) {
@@ -28,6 +29,13 @@ export default function Profile() {
   const { profile, isLoading, isError, error, updateProfile } = useProfile();
   const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // 캐시 클리어 및 새로고침 함수
+  const handleRefreshProfile = () => {
+    queryClient.invalidateQueries({ queryKey: ['profile'] });
+    queryClient.refetchQueries({ queryKey: ['profile'] });
+  };
 
   // Set up countdown timer if we hit a rate limit
   useEffect(() => {
@@ -129,13 +137,23 @@ export default function Profile() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">My Profile</h1>
-          <Button 
-            onClick={() => navigate('/edit-profile')} 
-            className="flex items-center gap-2"
-          >
-            <Edit className="h-4 w-4" />
-            Edit Profile
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline"
+              onClick={handleRefreshProfile}
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+            <Button 
+              onClick={() => navigate('/edit-profile')} 
+              className="flex items-center gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Edit Profile
+            </Button>
+          </div>
         </div>
 
         <Card className="mb-8">

@@ -1,42 +1,121 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../../../config/env';
 import { RoleName } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 
-// JWT 토큰 페이로드 타입
+/**
+ * Token Service
+ * Handles JWT token operations using RS256 algorithm consistently.
+ * This service must always use RS256 without exception.
+ */
+
+// JWT token payload type
 interface TokenPayload {
   userId: number;
   role: RoleName;
 }
 
-// 토큰 응답 타입
+// Token response type
 interface TokenResponse {
   accessToken: string;
   refreshToken: string;
-  expiresIn: number; // 초 단위
+  expiresIn: number; // in seconds
+}
+
+// RS256 key variables
+let privateKey: string;
+let publicKey: string;
+
+// Initialization function - load keys
+(function loadKeys() {
+  try {
+    // Try to load keys from environment variables
+    if (env.JWT_PRIVATE_KEY && env.JWT_PUBLIC_KEY) {
+      privateKey = env.JWT_PRIVATE_KEY;
+      publicKey = env.JWT_PUBLIC_KEY;
+      console.log('✅ RS256 keys loaded from environment variables in token.service');
+      return;
+    }
+
+    // Try to load keys from files
+    const keysDir = path.join(process.cwd(), 'keys');
+    const privateKeyPath = path.join(keysDir, 'private.key');
+    const publicKeyPath = path.join(keysDir, 'public.key');
+
+    if (fs.existsSync(privateKeyPath) && fs.existsSync(publicKeyPath)) {
+      privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+      publicKey = fs.readFileSync(publicKeyPath, 'utf8');
+      console.log('✅ RS256 keys loaded from file system in token.service');
+      return;
+    }
+
+    // Generate keys if they don't exist
+    console.log('Generating new RS256 key pair in token.service...');
+    const keys = generateKeyPair();
+    privateKey = keys.privateKey;
+    publicKey = keys.publicKey;
+
+    // Create directory and save keys
+    if (!fs.existsSync(keysDir)) {
+      fs.mkdirSync(keysDir, { recursive: true });
+    }
+    fs.writeFileSync(privateKeyPath, privateKey);
+    fs.writeFileSync(publicKeyPath, publicKey);
+    fs.chmodSync(privateKeyPath, 0o600); // Owner read/write only
+
+    console.log('✅ RS256 key pair generated and saved in token.service');
+  } catch (error) {
+    console.error('Error loading or generating JWT keys in token.service:', error);
+    throw new Error('Failed to initialize tokens service: ' + (error instanceof Error ? error.message : 'Unknown error'));
+  }
+})();
+
+// Generate RSA key pair function
+function generateKeyPair() {
+  return crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: {
+      type: 'spki',
+      format: 'pem'
+    },
+    privateKeyEncoding: {
+      type: 'pkcs8',
+      format: 'pem'
+    }
+  });
 }
 
 /**
- * 액세스 토큰과 리프레시 토큰 생성
+ * Generate access and refresh tokens
+ * Always uses RS256 algorithm for consistent security
  */
 export async function generateTokens(userId: number, role: RoleName): Promise<TokenResponse> {
   const accessTokenPayload: TokenPayload = { userId, role };
   const refreshTokenPayload: TokenPayload = { userId, role };
   
-  // 만료 시간 계산 (초 단위)
+  // Calculate expiration time in seconds
   const accessTokenExpiresIn = parseExpirationToSeconds(env.JWT_ACCESS_EXPIRATION);
   const refreshTokenExpiresIn = parseExpirationToSeconds(env.JWT_REFRESH_EXPIRATION);
   
-  // 토큰 생성
+  // Generate tokens (using RS256 algorithm)
   const accessToken = jwt.sign(
     accessTokenPayload,
-    env.JWT_ACCESS_SECRET,
-    { expiresIn: accessTokenExpiresIn }
+    privateKey,
+    { 
+      expiresIn: accessTokenExpiresIn,
+      algorithm: 'RS256'  // Explicitly use RS256
+    }
   );
   
   const refreshToken = jwt.sign(
     refreshTokenPayload,
-    env.JWT_REFRESH_SECRET,
-    { expiresIn: refreshTokenExpiresIn }
+    privateKey,
+    { 
+      expiresIn: refreshTokenExpiresIn,
+      algorithm: 'RS256'  // Explicitly use RS256
+    }
   );
   
   return {
@@ -47,31 +126,37 @@ export async function generateTokens(userId: number, role: RoleName): Promise<To
 }
 
 /**
- * 액세스 토큰 검증
+ * Verify access token
+ * Only accepts tokens signed with RS256 algorithm
  */
 export async function verifyAccessToken(token: string): Promise<TokenPayload | null> {
   try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as TokenPayload;
+    // Explicitly specify we only accept RS256
+    const decoded = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as TokenPayload;
     return decoded;
   } catch (error) {
+    console.error('Access token verification failed:', error);
     return null;
   }
 }
 
 /**
- * 리프레시 토큰 검증
+ * Verify refresh token
+ * Only accepts tokens signed with RS256 algorithm
  */
 export async function verifyRefreshToken(token: string): Promise<TokenPayload | null> {
   try {
-    const decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as TokenPayload;
+    // Explicitly specify we only accept RS256
+    const decoded = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as TokenPayload;
     return decoded;
   } catch (error) {
+    console.error('Refresh token verification failed:', error);
     return null;
   }
 }
 
 /**
- * 문자열 형태의 만료 시간(예: '15m', '1h', '7d')을 초 단위로 변환
+ * Parse expiration string (e.g., '15m', '1h', '7d') to seconds
  */
 function parseExpirationToSeconds(expiration: string): number {
   const unit = expiration.slice(-1);
@@ -87,6 +172,6 @@ function parseExpirationToSeconds(expiration: string): number {
     case 'd':
       return value * 24 * 60 * 60;
     default:
-      return 900; // 기본값 15분
+      return 900; // Default 15 minutes
   }
 } 

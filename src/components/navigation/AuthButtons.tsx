@@ -3,31 +3,35 @@ import { Link, useNavigate } from 'react-router-dom';
 import { LogIn, UserPlus, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { logout, User } from '@/services/auth.service';
+import { User } from '@/services/auth.service';
+import { useAuth } from '@/contexts/auth-context';
 import UserMenu from './UserMenu';
 
 interface AuthButtonsProps {
   isMobile: boolean;
   isLoggedIn: boolean;
-  setIsLoggedIn: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsLoggedIn?: React.Dispatch<React.SetStateAction<boolean>>;
   currentUser?: User | null;
 }
 
 const AuthButtons: React.FC<AuthButtonsProps> = ({ 
   isMobile, 
   isLoggedIn, 
-  setIsLoggedIn,
+  setIsLoggedIn, 
   currentUser 
 }) => {
   const navigate = useNavigate();
+  const { logout: authLogout } = useAuth();
 
   const handleLogout = async () => {
     try {
       // Call the logout API service
-      await logout();
+      await authLogout();
       
-      // Update login state
-      setIsLoggedIn(false);
+      // Update login state if provided
+      if (setIsLoggedIn) {
+        setIsLoggedIn(false);
+      }
       
       // Show toast message
       toast.success("Logged out successfully");
@@ -40,39 +44,53 @@ const AuthButtons: React.FC<AuthButtonsProps> = ({
     }
   };
 
-  if (isMobile) {
+  // On mobile, render logout as a button
+  if (isMobile && isLoggedIn) {
     return (
-      <div className="fixed bottom-4 right-4 z-10 flex flex-col gap-2">
-        {!isLoggedIn ? (
-          <>
-            <Button 
-              className="bg-bookish-maroon hover:bg-bookish-dark shadow-lg rounded-full"
-              asChild
-            >
-              <Link to="/login">
-                <LogIn className="h-4 w-4 mr-1" />
-                Login
-              </Link>
-            </Button>
-            <Button 
-              className="bg-bookish-maroon hover:bg-bookish-dark shadow-lg rounded-full"
-              asChild
-            >
-              <Link to="/signup">
-                <UserPlus className="h-4 w-4 mr-1" />
-                Sign Up
-              </Link>
-            </Button>
-          </>
-        ) : (
-          <Button 
-            className="bg-bookish-maroon hover:bg-bookish-dark shadow-lg rounded-full"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4 mr-1" />
-            Logout
-          </Button>
-        )}
+      <div className="flex flex-col space-y-2 mt-4">
+        <span className="text-bookish-maroon font-medium px-3">
+          Welcome, {currentUser?.username || 'User'}!
+        </span>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleLogout}
+          className="flex items-center justify-start text-bookish-maroon hover:bg-bookish-maroon/10 px-3"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Logout
+        </Button>
+      </div>
+    );
+  }
+
+  // On mobile, render login/signup as buttons
+  if (isMobile && !isLoggedIn) {
+    return (
+      <div className="flex flex-col space-y-2 mt-4">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="flex items-center justify-start text-bookish-maroon hover:bg-bookish-maroon/10 px-3" 
+          asChild
+        >
+          <Link to="/login">
+            <LogIn className="h-4 w-4 mr-2" />
+            Login
+          </Link>
+        </Button>
+        
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="flex items-center justify-start text-bookish-maroon hover:bg-bookish-maroon/10 px-3" 
+          asChild
+        >
+          <Link to="/signup">
+            <UserPlus className="h-4 w-4 mr-2" />
+            Sign Up
+          </Link>
+        </Button>
       </div>
     );
   }
@@ -106,11 +124,7 @@ const AuthButtons: React.FC<AuthButtonsProps> = ({
           </Button>
         </>
       ) : (
-        <UserMenu 
-          setIsLoggedIn={setIsLoggedIn} 
-          username={currentUser?.username}
-          role={currentUser?.role}
-        />
+        <UserMenu setIsLoggedIn={setIsLoggedIn} />
       )}
     </>
   );

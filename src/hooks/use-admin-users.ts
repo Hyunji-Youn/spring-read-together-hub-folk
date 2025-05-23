@@ -1,7 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
-import { getAllUsers, updateUserApplicationStatus, UserProfile } from '../services/user.service';
+import { 
+  getAllUsers, 
+  updateUserApplicationStatus, 
+  getUserStatistics, 
+  getAuditLogs,
+  getUsersWithOptions,
+  UserProfile, 
+  UserStatistics,
+  AuditLogEntry
+} from '../services/user.service';
 
 // Define rate limit error type for better handling
 interface RateLimitError {
@@ -9,6 +18,132 @@ interface RateLimitError {
   retryAfter?: number;
   message: string;
 }
+
+// Hook for user statistics
+export const useUserStatistics = () => {
+  return useQuery({
+    queryKey: ['admin-statistics'],
+    queryFn: async () => {
+      try {
+        return await getUserStatistics();
+      } catch (error) {
+        // Check if it's a rate limit error
+        const axiosError = error as AxiosError;
+        if (axiosError.response?.status === 429) {
+          const retryAfter = axiosError.response.headers['retry-after'] 
+            ? parseInt(axiosError.response.headers['retry-after']) * 1000
+            : 60000; // Default to 1 minute if header is not present
+          
+          // Create a custom error with rate limit info
+          throw {
+            isRateLimit: true,
+            retryAfter,
+            message: 'Rate limit exceeded. Please try again later.'
+          } as RateLimitError;
+        }
+        throw error;
+      }
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on rate limit errors
+      const err = error as any;
+      if (err.isRateLimit) {
+        return false;
+      }
+      // Retry up to 3 times for other errors
+      return failureCount < 3;
+    },
+  });
+};
+
+// Hook for filtered users with pagination
+export const useFilteredUsers = (options: {
+  status?: string;
+  role?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}) => {
+  return useQuery({
+    queryKey: ['admin-filtered-users', options],
+    queryFn: async () => {
+      try {
+        return await getUsersWithOptions(options);
+      } catch (error) {
+        // Check if it's a rate limit error
+        const axiosError = error as AxiosError;
+        if (axiosError.response?.status === 429) {
+          const retryAfter = axiosError.response.headers['retry-after'] 
+            ? parseInt(axiosError.response.headers['retry-after']) * 1000
+            : 60000; // Default to 1 minute if header is not present
+          
+          // Create a custom error with rate limit info
+          throw {
+            isRateLimit: true,
+            retryAfter,
+            message: 'Rate limit exceeded. Please try again later.'
+          } as RateLimitError;
+        }
+        throw error;
+      }
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on rate limit errors
+      const err = error as any;
+      if (err.isRateLimit) {
+        return false;
+      }
+      // Retry up to 3 times for other errors
+      return failureCount < 3;
+    },
+  });
+};
+
+// Hook for audit logs
+export const useAuditLogs = (options: {
+  eventType?: string;
+  userId?: number;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  offset?: number;
+}) => {
+  return useQuery({
+    queryKey: ['admin-audit-logs', options],
+    queryFn: async () => {
+      try {
+        return await getAuditLogs(options);
+      } catch (error) {
+        // Check if it's a rate limit error
+        const axiosError = error as AxiosError;
+        if (axiosError.response?.status === 429) {
+          const retryAfter = axiosError.response.headers['retry-after'] 
+            ? parseInt(axiosError.response.headers['retry-after']) * 1000
+            : 60000; // Default to 1 minute if header is not present
+          
+          // Create a custom error with rate limit info
+          throw {
+            isRateLimit: true,
+            retryAfter,
+            message: 'Rate limit exceeded. Please try again later.'
+          } as RateLimitError;
+        }
+        throw error;
+      }
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on rate limit errors
+      const err = error as any;
+      if (err.isRateLimit) {
+        return false;
+      }
+      // Retry up to 3 times for other errors
+      return failureCount < 3;
+    },
+  });
+};
 
 export const useAdminUsers = (applicationStatus?: string) => {
   const queryClient = useQueryClient();

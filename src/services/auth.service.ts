@@ -4,16 +4,17 @@ import { AxiosResponse } from 'axios';
 // 타입 정의
 export interface LoginRequest {
   username: string;
-  password: string;
+  password: string; // 이 필드는 이제 registration_password 값을 사용함
 }
 
 export interface RegisterRequest {
   username: string;
-  password: string; // This will be 'test123test123'
   name: string;
   email: string;
   phone_number: string;
-  requested_librarian_role: boolean;
+  registration_password: string;
+  request_librarian_role: boolean;
+  accept_terms: boolean;
 }
 
 export interface User {
@@ -21,14 +22,19 @@ export interface User {
   username: string;
   name: string;
   email: string;
+  phone_number: string;
   role: string;
+  status?: string;
+  isAdmin?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface LoginResponse {
   success: boolean;
-  accessToken: string;
-  expiresIn: number;
-  user: User;
+  message?: string;
+  user?: User;
+  token?: string;
 }
 
 export interface RegisterResponse {
@@ -45,77 +51,89 @@ export interface RegisterResponse {
 let currentUser: User | null = null;
 
 // 로그인 함수
-export const login = async (credentials: LoginRequest): Promise<User> => {
+export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
   try {
-    const response: AxiosResponse<LoginResponse> = await api.post('/auth/login', credentials, {
-      withCredentials: true, // 쿠키를 받기 위해 필요
-    });
+    const response = await api.post('/auth/login', credentials);
     
-    // 액세스 토큰 저장
-    localStorage.setItem('accessToken', response.data.accessToken);
+    // If login is successful, store the token in localStorage
+    if (response.data && response.data.success) {
+      const token = response.data.token || response.data.accessToken;
+      if (token) {
+        localStorage.setItem('accessToken', token);
+        // Set auth header for future requests
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      }
+    }
     
-    // 현재 사용자 정보 저장
-    currentUser = response.data.user;
-    
-    return response.data.user;
+    return response.data;
   } catch (error) {
-    console.error('Login error:', error);
+    if (error.response && error.response.data) {
+      return error.response.data;
+    }
+    throw error;
+  }
+};
+
+// 어드민 로그인 함수
+export const adminLogin = async (credentials: LoginRequest): Promise<LoginResponse> => {
+  try {
+    const response = await api.post('/auth/admin/login', credentials);
+    
+    // If login is successful, store the token in localStorage
+    if (response.data && response.data.success) {
+      const token = response.data.token || response.data.accessToken;
+      if (token) {
+        localStorage.setItem('accessToken', token);
+        // Set auth header for future requests
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        // Store user role or admin status
+        if (response.data.isAdmin) {
+          localStorage.setItem('isAdmin', 'true');
+        }
+      }
+    }
+    
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      return error.response.data;
+    }
     throw error;
   }
 };
 
 // 회원가입 함수
-export const register = async (userData: RegisterRequest): Promise<RegisterResponse> => {
+export const register = async (userData: RegisterRequest): Promise<any> => {
   try {
-    const response: AxiosResponse<RegisterResponse> = await api.post('/auth/register', userData);
+    const response = await api.post('/auth/register', userData);
     return response.data;
   } catch (error) {
-    console.error('Registration error:', error);
+    if (error.response && error.response.data) {
+      return error.response.data;
+    }
     throw error;
   }
 };
 
 // 로그아웃 함수
-export const logout = async (): Promise<void> => {
+export const logout = async (): Promise<boolean> => {
   try {
-    // 서버에 로그아웃 요청 보내기 (리프레시 토큰 무효화)
-    await api.post('/auth/logout', {}, { withCredentials: true });
-    
-    // 로컬 스토리지에서 액세스 토큰 제거
-    localStorage.removeItem('accessToken');
-    
-    // 현재 사용자 정보 초기화
-    currentUser = null;
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    return true;
   } catch (error) {
     console.error('Logout error:', error);
-    
-    // 실패하더라도 클라이언트 측에서는 토큰 삭제
-    localStorage.removeItem('accessToken');
-    currentUser = null;
-    
-    throw error;
+    return false;
   }
 };
 
 // 현재 사용자 정보 가져오기
 export const getCurrentUser = async (): Promise<User | null> => {
-  // 이미 로드된 사용자 정보가 있으면 반환
-  if (currentUser) {
-    return currentUser;
-  }
-  
-  // 토큰이 있으면 사용자 정보 요청
-  const token = localStorage.getItem('accessToken');
-  if (!token) {
-    return null;
-  }
-  
   try {
-    const response: AxiosResponse<{ user: User }> = await api.get('/users/me');
-    currentUser = response.data.user;
-    return currentUser;
+    const response = await api.get('/users/me');
+    return response.data.user;
   } catch (error) {
-    console.error('Failed to get user profile:', error);
+    console.error('Failed to get current user:', error);
     return null;
   }
 };

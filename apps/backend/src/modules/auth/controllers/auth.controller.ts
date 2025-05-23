@@ -1,166 +1,482 @@
 import { Request, Response } from 'express';
-import * as authService from '../services/auth.service';
-import { loginSchema, refreshTokenSchema, registerSchema } from '../dto/auth.dto';
+import { RoleName, ApplicationStatus } from '@prisma/client';
+import { prisma } from '../../../config/database';
+import { passwordService } from '../services/password.service';
+import { jwtService } from '../services/jwt.service';
+import { 
+  loginRequestSchema, 
+  registrationRequestSchema, 
+  passwordChangeRequestSchema,
+  adminLoginRequestSchema
+} from '../dto/auth.dto';
+import crypto from 'crypto';
 import { env } from '../../../config/env';
+import { AuditEventType, createAuditLog } from '../../audit/services/audit.service';
+import { z } from 'zod';
+import * as authService from '../services/auth.service';
 
 /**
- * 사용자 로그인 컨트롤러
+ * Handle user login request
+ * 
+ * @param req - Express request object
+ * @param res - Express response object
  */
-export async function login(req: Request, res: Response) {
+export const login = async (req: Request, res: Response) => {
   try {
-    // 요청 데이터 검증
-    const validatedData = loginSchema.parse(req.body);
+    const { username, password } = req.body;
     
-    // 로그인 서비스 호출
-    const result = await authService.login(validatedData);
-    
-    // 리프레시 토큰을 HTTP Only 쿠키로 설정
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: parseExpiration(env.JWT_REFRESH_EXPIRATION),
-    });
-    
-    // 액세스 토큰은 응답 본문으로 반환
-    res.status(200).json({
-      success: true,
-      accessToken: result.accessToken,
-      expiresIn: result.expiresIn,
-      user: result.user,
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === 'Invalid credentials') {
-        return res.status(401).json({ success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다.' });
-      } else if (error.message === 'Account not approved') {
-        return res.status(403).json({ success: false, message: '계정이 아직 승인되지 않았습니다.' });
-      }
+    // Basic validation
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username and registration code are required',
+      });
     }
     
+    const result = await authService.login(username, password);
+    
+    if (result.success) {
+      // Format response to match frontend expectations
+      return res.status(200).json({
+        success: true,
+        message: 'Login successful',
+        token: result.token,          // For compatibility with old code
+        accessToken: result.token,    // For compatibility with auth-context.tsx
+        user: result.user,
+        // Include data field for newer auth-context format
+        data: {
+          accessToken: result.token,
+          user: result.user
+        }
+      });
+    } else {
+      return res.status(401).json(result);
+    }
+  } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ success: false, message: '로그인 처리 중 오류가 발생했습니다.' });
-  }
-}
-
-/**
- * 회원 가입 컨트롤러
- */
-export async function register(req: Request, res: Response) {
-  try {
-    // 요청 데이터 검증
-    const validatedData = registerSchema.parse(req.body);
     
-    // 회원 가입 서비스 호출
-    const result = await authService.register(validatedData);
-    
-    // 관리자 이메일 알림 로직은 별도 함수로 구현 가능
-    
-    res.status(201).json({
-      success: true,
-      message: '회원 가입 신청이 완료되었습니다. 관리자 승인 후 로그인 가능합니다.',
-      user: result,
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred during login',
     });
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.message === 'Username or email already exists') {
-        return res.status(409).json({ success: false, message: '이미 사용 중인 아이디 또는 이메일입니다.' });
-      }
-    }
-    
-    console.error('Registration error:', error);
-    res.status(500).json({ success: false, message: '회원 가입 처리 중 오류가 발생했습니다.' });
   }
-}
+};
 
 /**
- * 토큰 갱신 컨트롤러
+ * Refresh access token using refresh token
+ * 
+ * @param req - Express request object
+ * @param res - Express response object
  */
-export async function refreshToken(req: Request, res: Response) {
+export const refreshToken = async (req: Request, res: Response) => {
   try {
-    // 쿠키에서 리프레시 토큰 추출
+    console.log('Token refresh attempt', { 
+      cookies: req.cookies ? 'Present' : 'Missing',
+      hasCookie: !!req.cookies.refreshToken,
+      cookiePath: req.path
+    });
+    
+    // Get refresh token from cookie
     const refreshToken = req.cookies.refreshToken;
-    
+
     if (!refreshToken) {
-      return res.status(401).json({ success: false, message: '리프레시 토큰이 없습니다.' });
+      console.log('Refresh token not provided in cookies');
+      return res.status(401).json({
+        success: false,
+        message: 'Refresh token not provided'
+      });
     }
-    
-    // 토큰 갱신 서비스 호출
-    const result = await authService.refreshTokens(refreshToken);
-    
-    // 새 리프레시 토큰을 쿠키로 설정
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: parseExpiration(env.JWT_REFRESH_EXPIRATION),
-    });
-    
-    // 새 액세스 토큰 반환
-    res.status(200).json({
-      success: true,
-      accessToken: result.accessToken,
-      expiresIn: result.expiresIn,
-    });
+
+    try {
+      // Verify refresh token
+      console.log('Verifying refresh token...');
+      const payload = await jwtService.verifyRefreshToken(refreshToken);
+      console.log('Refresh token verified successfully for user:', payload.sub);
+
+      // Find user
+      const user = await prisma.users.findUnique({
+        where: { user_id: payload.sub },
+        include: { role: true }
+      });
+
+      if (!user) {
+        console.log('User not found for refresh token payload:', payload);
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+
+      // Check if user is approved
+      if (user.application_status !== ApplicationStatus.approved) {
+        console.log('User account not approved:', user.user_id);
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is pending approval or has been rejected'
+        });
+      }
+
+      // Generate new access token
+      console.log('Generating new access token...');
+      const accessToken = await jwtService.generateAccessToken(
+        user.user_id,
+        user.role.role_name,
+        {
+          email: user.email,
+          username: user.username
+        }
+      );
+
+      // Rotate refresh token (optional but recommended for security)
+      console.log('Rotating refresh token...');
+      const { token: newRefreshToken, hash: newRefreshTokenHash, expiresAt } =
+        await jwtService.generateRefreshToken(
+          user.user_id,
+          user.role.role_name
+        );
+
+      // Compute old token hash for revocation
+      const oldTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+      // Revoke old refresh token
+      await jwtService.revokeRefreshToken(oldTokenHash);
+
+      // Store new refresh token
+      await jwtService.storeRefreshToken(
+        user.user_id,
+        newRefreshTokenHash,
+        expiresAt
+      );
+
+      console.log('Setting new refresh token cookie during token refresh');
+      
+      // Set new refresh token as httpOnly cookie with high security
+      res.cookie('refreshToken', newRefreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+        path: '/api/auth/refresh'
+      });
+
+      // Return new access token
+      return res.status(200).json({
+        success: true,
+        message: 'Token refreshed successfully',
+        accessToken,
+        user: {
+          id: user.user_id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          role: user.role.role_name
+        },
+        data: {
+          accessToken,
+          user: {
+            id: user.user_id,
+            username: user.username,
+            name: user.name,
+            email: user.email,
+            role: user.role.role_name
+          }
+        }
+      });
+    } catch (tokenError) {
+      console.error('Token verification failed:', tokenError);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid refresh token',
+        error: process.env.NODE_ENV === 'development' ? (tokenError as Error).message : undefined
+      });
+    }
   } catch (error) {
     console.error('Token refresh error:', error);
-    res.status(401).json({ success: false, message: '토큰 갱신에 실패했습니다.' });
-  }
-}
-
-/**
- * 로그아웃 컨트롤러
- */
-export async function logout(req: Request, res: Response) {
-  try {
-    // 리프레시 토큰 쿠키에서 가져오기
-    const refreshToken = req.cookies?.refreshToken;
-    const userId = req.user?.userId;
-
-    // 사용자 ID가 없으면 그냥 쿠키만 삭제
-    if (!userId) {
-      res.clearCookie('refreshToken', {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'strict'
-      });
-      return res.status(200).json({ success: true, message: 'Logged out successfully' });
-    }
-
-    // 리프레시 토큰 무효화 (refreshToken이 없어도 됨)
-    await authService.logout(userId, refreshToken);
     
-    // 리프레시 토큰 쿠키 삭제
+    // Clear the invalid refresh token cookie
     res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
+      path: '/api/auth/refresh',
+      secure: true,
       sameSite: 'strict'
     });
     
-    res.status(200).json({ success: true, message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ success: false, message: 'Error occurred during logout' });
+    res.clearCookie('XSRF-TOKEN', {
+      secure: true,
+      sameSite: 'strict'
+    });
+    
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid refresh token'
+    });
   }
-}
+};
 
 /**
- * 문자열 형태의 만료 시간(예: '15m', '1h', '7d')을 밀리초 단위로 변환
+ * Handle user logout by revoking the refresh token
+ * 
+ * @param req - Express request object
+ * @param res - Express response object
  */
-function parseExpiration(expiration: string): number {
-  const unit = expiration.slice(-1);
-  const value = parseInt(expiration.slice(0, -1));
-  
-  switch (unit) {
-    case 's':
-      return value * 1000;
-    case 'm':
-      return value * 60 * 1000;
-    case 'h':
-      return value * 60 * 60 * 1000;
-    case 'd':
-      return value * 24 * 60 * 60 * 1000;
-    default:
-      return 15 * 60 * 1000; // 기본값 15분
+export const logout = async (req: Request, res: Response) => {
+  try {
+    // Get refresh token from cookie
+    const refreshToken = req.cookies.refreshToken;
+
+    if (refreshToken) {
+      // Compute token hash
+      const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+      
+      // Revoke refresh token
+      await jwtService.revokeRefreshToken(tokenHash);
+    }
+
+    // Clear cookies with high security settings
+    res.clearCookie('refreshToken', {
+      path: '/api/auth/refresh',
+      secure: true,
+      sameSite: 'strict'
+    });
+
+    res.clearCookie('XSRF-TOKEN', {
+      secure: true,
+      sameSite: 'strict'
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logout successful'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error during logout'
+    });
   }
-} 
+};
+
+/**
+ * Handle user registration
+ * 
+ * @param req - Express request object
+ * @param res - Express response object
+ */
+export const register = async (req: Request, res: Response) => {
+  try {
+    console.log('Registration request received:');
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('Headers:', {
+      contentType: req.headers['content-type'],
+      accept: req.headers.accept
+    });
+    
+    // Validate the request with zod schema
+    try {
+      const validationResult = registrationRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        console.log('Validation failed with errors:', JSON.stringify(validationResult.error.errors, null, 2));
+        return res.status(400).json({
+          success: false,
+          message: 'Validation error',
+          errors: validationResult.error.errors.map(err => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
+        });
+      }
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        console.log('Zod validation error:', JSON.stringify(validationError.errors, null, 2));
+        return res.status(400).json({
+          success: false,
+          message: 'Validation error',
+          errors: validationError.errors.map(err => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
+        });
+      }
+    }
+    
+    const { 
+      username, 
+      name, 
+      email, 
+      phone_number, 
+      request_librarian_role = false,
+      registration_password,
+      accept_terms = false
+    } = req.body;
+    
+    // Check terms acceptance
+    if (!accept_terms) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must accept the terms and conditions',
+        errors: [
+          { field: 'accept_terms', message: 'You must accept the terms and conditions' }
+        ]
+      });
+    }
+
+    // Verify the registration password
+    const isValidRegistrationPassword = await authService.verifyRegistrationPassword(registration_password);
+    if (!isValidRegistrationPassword) {
+      console.log('Registration failed: Invalid registration code');
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid registration code'
+      });
+    }
+
+    // Use registration_password as the account password
+    const result = await authService.register({
+      username: req.body.username,
+      password: req.body.registration_password, // Use registration_password as the password
+      name: req.body.name,
+      email: req.body.email,
+      phone_number: req.body.phone_number,
+      registration_password: req.body.registration_password,
+      request_librarian_role: req.body.request_librarian_role || false
+    });
+    
+    if (result.success) {
+      return res.status(201).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('Registration error:', error);
+    
+    // Check if it's a validation error
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred during registration',
+    });
+  }
+};
+
+/**
+ * Handle admin login request
+ * 
+ * @param req - Express request object
+ * @param res - Express response object
+ */
+export const adminLogin = async (req: Request, res: Response) => {
+  try {
+    console.log('Admin login request received:', {
+      body: req.body,
+      headers: {
+        contentType: req.headers['content-type'],
+        authorization: req.headers.authorization ? 'Present (Hidden)' : 'None'
+      }
+    });
+    
+    const { username, password } = req.body;
+    
+    // Basic validation
+    if (!username || !password) {
+      console.log('Admin login validation failed: missing username or password');
+      return res.status(400).json({
+        success: false,
+        message: 'Username and password are required',
+      });
+    }
+    
+    // Zod validation
+    try {
+      adminLoginRequestSchema.parse(req.body);
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        console.log('Admin login Zod validation failed:', validationError.errors);
+        return res.status(400).json({
+          success: false,
+          message: 'Validation error',
+          errors: validationError.errors.map(err => ({
+            field: err.path.join('.'),
+            message: err.message
+          }))
+        });
+      }
+    }
+    
+    console.log('Admin login validation passed, calling auth service...');
+    const result = await authService.adminLogin({ username, password });
+    console.log('Admin login result:', {
+      success: result.success,
+      isAdmin: result.isAdmin,
+      hasToken: !!result.token,
+      hasRefreshToken: !!result.refreshToken,
+      message: result.message
+    });
+    
+    if (result.success) {
+      // Create audit log
+      try {
+        await createAuditLog(
+          AuditEventType.LOGIN_SUCCESS,
+          result.user?.id,
+          undefined,
+          { 
+            isAdmin: true,
+            username: result.user?.username
+          }
+        );
+      } catch (auditError) {
+        console.error('Error creating audit log for admin login:', auditError);
+      }
+      
+      // Store refresh token as HTTP-only cookie
+      if (result.refreshToken) {
+        console.log('Setting refresh token cookie for admin login');
+        res.cookie('refreshToken', result.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+          path: '/api/auth/refresh'
+        });
+      }
+      
+      // Format response to match frontend expectations
+      return res.status(200).json({
+        success: true,
+        message: 'Admin login successful',
+        token: result.token,              // For compatibility with old code
+        accessToken: result.token,        // For compatibility with auth-context.tsx
+        user: result.user,
+        isAdmin: true,
+        // Include data field for newer auth-context format
+        data: {
+          accessToken: result.token,
+          user: {
+            ...result.user,
+            isAdmin: true
+          }
+        }
+      });
+    } else {
+      console.log('Admin login failed with message:', result.message);
+      return res.status(401).json(result);
+    }
+  } catch (error) {
+    console.error('Admin login error:', error);
+    
+    return res.status(500).json({
+      success: false,
+      message: 'An error occurred during admin login',
+    });
+  }
+}; 
