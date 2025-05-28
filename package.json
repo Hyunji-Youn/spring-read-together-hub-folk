@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "install:shared-types": "./scripts/install-shared-types.sh",
+    "postinstall": "./scripts/install-shared-types.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -27,6 +29,7 @@
     "@radix-ui/react-tabs": "^1.1.0",
     "@radix-ui/react-toast": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@spring-book-club/shared-types": "file:shared/types",
     "@tanstack/react-query": "^5.56.2",
     "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",

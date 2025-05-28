@@ -14,6 +14,8 @@ import { env } from '../../../config/env';
 import { AuditEventType, createAuditLog } from '../../audit/services/audit.service';
 import { z } from 'zod';
 import * as authService from '../services/auth.service';
+import { ApiResponseHelper } from '../../../common/utils/api-response';
+import Logger from '../../../common/utils/logger';
 
 /**
  * Handle user login request
@@ -27,38 +29,25 @@ export const login = async (req: Request, res: Response) => {
     
     // Basic validation
     if (!username || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Username and registration code are required',
-      });
+      return ApiResponseHelper.badRequest(res, 'Username and password are required');
     }
     
     const result = await authService.login(username, password);
     
     if (result.success) {
       // Format response to match frontend expectations
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        token: result.token,          // For compatibility with old code
-        accessToken: result.token,    // For compatibility with auth-context.tsx
+      return ApiResponseHelper.success(res, {
+        accessToken: result.token,
         user: result.user,
-        // Include data field for newer auth-context format
-        data: {
-          accessToken: result.token,
-          user: result.user
-        }
-      });
+        // Legacy fields for backward compatibility
+        token: result.token
+      }, 'Login successful');
     } else {
-      return res.status(401).json(result);
+      return ApiResponseHelper.unauthorized(res, result.message);
     }
   } catch (error) {
     console.error('Login error:', error);
-    
-    return res.status(500).json({
-      success: false,
-      message: 'An error occurred during login',
-    });
+    return ApiResponseHelper.internalServerError(res, 'An error occurred during login');
   }
 };
 
@@ -81,10 +70,7 @@ export const refreshToken = async (req: Request, res: Response) => {
 
     if (!refreshToken) {
       console.log('Refresh token not provided in cookies');
-      return res.status(401).json({
-        success: false,
-        message: 'Refresh token not provided'
-      });
+      return ApiResponseHelper.unauthorized(res, 'Refresh token not provided');
     }
 
     try {
@@ -376,19 +362,39 @@ export const register = async (req: Request, res: Response) => {
  */
 export const adminLogin = async (req: Request, res: Response) => {
   try {
-    console.log('Admin login request received:', {
+    Logger.info('Admin login attempt started', {
+      method: req.method,
+      path: req.path,
+      contentType: req.headers['content-type'],
+      hasAuth: !!req.headers.authorization,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    }, 'ADMIN_LOGIN');
+
+    Logger.debug('Admin login request details', {
       body: req.body,
       headers: {
         contentType: req.headers['content-type'],
         authorization: req.headers.authorization ? 'Present (Hidden)' : 'None'
       }
+    }, 'ADMIN_LOGIN');
+
+    // First, let's check if any admin users exist
+    const adminCount = await prisma.users.count({
+      where: {
+        role: {
+          role_name: RoleName.Admin
+        }
+      }
     });
+    Logger.info('Admin user count check', { adminCount }, 'ADMIN_LOGIN');
     
     const { username, password } = req.body;
     
+    
     // Basic validation
     if (!username || !password) {
-      console.log('Admin login validation failed: missing username or password');
+      Logger.authFailure('Admin login validation failed: missing credentials', username, 'missing_credentials');
       return res.status(400).json({
         success: false,
         message: 'Username and password are required',
@@ -400,7 +406,8 @@ export const adminLogin = async (req: Request, res: Response) => {
       adminLoginRequestSchema.parse(req.body);
     } catch (validationError) {
       if (validationError instanceof z.ZodError) {
-        console.log('Admin login Zod validation failed:', validationError.errors);
+        Logger.authFailure('Admin login Zod validation failed', username, 'validation_error');
+        Logger.debug('Zod validation errors', { errors: validationError.errors }, 'ADMIN_LOGIN');
         return res.status(400).json({
           success: false,
           message: 'Validation error',
@@ -412,15 +419,17 @@ export const adminLogin = async (req: Request, res: Response) => {
       }
     }
     
-    console.log('Admin login validation passed, calling auth service...');
+    Logger.info('Admin login validation passed, calling auth service', { username }, 'ADMIN_LOGIN');
     const result = await authService.adminLogin({ username, password });
-    console.log('Admin login result:', {
+    
+    Logger.info('Admin login service result', {
       success: result.success,
       isAdmin: result.isAdmin,
       hasToken: !!result.token,
       hasRefreshToken: !!result.refreshToken,
-      message: result.message
-    });
+      message: result.message,
+      username
+    }, 'ADMIN_LOGIN');
     
     if (result.success) {
       // Create audit log
@@ -435,12 +444,12 @@ export const adminLogin = async (req: Request, res: Response) => {
           }
         );
       } catch (auditError) {
-        console.error('Error creating audit log for admin login:', auditError);
+        Logger.error('Error creating audit log for admin login', auditError, 'ADMIN_LOGIN');
       }
       
       // Store refresh token as HTTP-only cookie
       if (result.refreshToken) {
-        console.log('Setting refresh token cookie for admin login');
+        Logger.debug('Setting refresh token cookie for admin login', { username }, 'ADMIN_LOGIN');
         res.cookie('refreshToken', result.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
@@ -449,6 +458,8 @@ export const adminLogin = async (req: Request, res: Response) => {
           path: '/api/auth/refresh'
         });
       }
+      
+      Logger.authSuccess('Admin login successful', result.user?.id, username);
       
       // Format response to match frontend expectations
       return res.status(200).json({
@@ -468,11 +479,11 @@ export const adminLogin = async (req: Request, res: Response) => {
         }
       });
     } else {
-      console.log('Admin login failed with message:', result.message);
+      Logger.authFailure('Admin login failed', username, result.message);
       return res.status(401).json(result);
     }
   } catch (error) {
-    console.error('Admin login error:', error);
+    Logger.error('Admin login controller error', error, 'ADMIN_LOGIN');
     
     return res.status(500).json({
       success: false,

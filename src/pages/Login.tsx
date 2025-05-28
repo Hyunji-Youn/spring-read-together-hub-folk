@@ -86,15 +86,28 @@ const Login = () => {
     try {
       console.log('Attempting admin login...', values.username);
       
-      const user = await adminLogin({
+      const result = await adminLogin({
         username: values.username,
         password: values.password
       });
       
-      console.log('Admin login successful, user:', user);
+      console.log('Admin login result:', result);
       
-      window.location.href = '/admin';
-      return;
+      // Check if login was actually successful
+      if (result.success) {
+        toast.success('Admin Login Successful', {
+          description: 'Welcome to the admin dashboard!',
+          duration: 3000,
+        });
+        window.location.href = '/admin';
+        return;
+      } else {
+        // Login failed, show error message
+        toast.error('Admin Login Failed', {
+          description: result.message || 'Invalid admin credentials.',
+          duration: 5000,
+        });
+      }
     } catch (error) {
       console.error('Admin login failed:', error);
       
@@ -241,6 +254,29 @@ const Login = () => {
                         </FormItem>
                       )}
                     />
+                    
+                    {/* Add CORS test button for debugging */}
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="w-full" 
+                      onClick={async () => {
+                        try {
+                          const response = await fetch('https://localhost:3000/api/cors-test', {
+                            method: 'GET',
+                            credentials: 'include'
+                          });
+                          const data = await response.json();
+                          console.log('CORS test successful:', data);
+                          toast.success('CORS test successful!');
+                        } catch (error) {
+                          console.error('CORS test failed:', error);
+                          toast.error('CORS test failed: ' + error.message);
+                        }
+                      }}
+                    >
+                      Test CORS Connection
+                    </Button>
                     
                     <Button type="submit" className="w-full" disabled={isLoading}>
                       {isLoading ? (

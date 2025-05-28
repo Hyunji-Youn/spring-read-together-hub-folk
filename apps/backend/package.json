@@ -19,10 +19,13 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "install:shared-types": "../../scripts/install-shared-types.sh",
+    "postinstall": "../../scripts/install-shared-types.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "@spring-book-club/shared-types": "file:../../shared/types",
     "@types/cookie-parser": "^1.4.8",
     "argon2": "^0.40.3",
     "cookie-parser": "^1.4.7",

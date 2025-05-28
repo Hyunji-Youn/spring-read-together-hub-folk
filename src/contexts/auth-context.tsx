@@ -1,145 +1,24 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import api from '../lib/api';
+import { 
+  User, 
+  UserRole, 
+  UserRoleObject, 
+  Permission, 
+  ROLE_PERMISSIONS, 
+  hasPermission, 
+  hasAnyPermission, 
+  hasAllPermissions,
+  AuthResponse
+} from '@spring-book-club/shared-types';
 
-// Role enum matching backend
-export enum UserRole {
-  Admin = 'Admin',
-  Librarian = 'Librarian',
-  Member = 'Member',
-  PotentialMember = 'PotentialMember',
-}
+// Re-export for backward compatibility
+export { UserRole, Permission } from '@spring-book-club/shared-types';
+export type { User, UserRoleObject } from '@spring-book-club/shared-types';
 
-// Role object interface to match backend response
-export interface UserRoleObject {
-  role_id: number;
-  role_name: UserRole;
-}
+// Using shared ROLE_PERMISSIONS from @spring-book-club/shared-types
 
-// Permission enum matching backend
-export enum Permission {
-  // User management
-  VIEW_USERS = 'view:users',
-  CREATE_USER = 'create:user',
-  EDIT_USER = 'edit:user',
-  APPROVE_USER = 'approve:user',
-  DELETE_USER = 'delete:user',
-  
-  // Content
-  VIEW_PUBLIC_CONTENT = 'view:public-content',
-  VIEW_MEMBER_CONTENT = 'view:member-content',
-  CREATE_POST = 'create:post',
-  EDIT_OWN_POST = 'edit:own-post',
-  EDIT_ANY_POST = 'edit:any-post',
-  DELETE_OWN_POST = 'delete:own-post',
-  DELETE_ANY_POST = 'delete:any-post',
-  
-  // Materials
-  UPLOAD_MATERIAL = 'upload:material',
-  EDIT_OWN_MATERIAL = 'edit:own-material',
-  EDIT_ANY_MATERIAL = 'edit:any-material',
-  DELETE_OWN_MATERIAL = 'delete:own-material',
-  DELETE_ANY_MATERIAL = 'delete:any-material',
-  
-  // Events
-  VIEW_EVENTS = 'view:events',
-  CREATE_EVENT = 'create:event',
-  EDIT_EVENT = 'edit:event',
-  DELETE_EVENT = 'delete:event',
-  
-  // Chat
-  USE_CHAT = 'use:chat',
-  DELETE_OWN_CHAT = 'delete:own-chat',
-  DELETE_ANY_CHAT = 'delete:any-chat',
-}
-
-// Map roles to permissions - duplicate of backend mapping
-const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  [UserRole.Admin]: [
-    // All permissions except DELETE_USER
-    Permission.VIEW_USERS,
-    Permission.CREATE_USER,
-    Permission.EDIT_USER,
-    Permission.APPROVE_USER,
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.EDIT_ANY_POST,
-    Permission.DELETE_OWN_POST,
-    Permission.DELETE_ANY_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.EDIT_ANY_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    Permission.DELETE_ANY_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    Permission.CREATE_EVENT,
-    Permission.EDIT_EVENT,
-    Permission.DELETE_EVENT,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-    Permission.DELETE_ANY_CHAT,
-  ],
-  
-  [UserRole.Librarian]: [
-    Permission.VIEW_USERS,
-    Permission.DELETE_USER, // Only Librarians can delete users
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.DELETE_OWN_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    Permission.CREATE_EVENT, // Librarians can manage events
-    Permission.EDIT_EVENT,
-    Permission.DELETE_EVENT,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-  ],
-  
-  [UserRole.Member]: [
-    Permission.VIEW_USERS,
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.DELETE_OWN_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-  ],
-  
-  [UserRole.PotentialMember]: [
-    Permission.VIEW_PUBLIC_CONTENT,
-  ],
-};
-
-// User interface
-export interface User {
-  id: number;
-  username: string;
-  name: string;
-  email: string;
-  role: UserRoleObject | UserRole; // 두 가지 형태 모두 지원: 객체 형태 또는 문자열 형태
-}
+// Using shared User interface from @spring-book-club/shared-types
 
 // Login response interface
 interface LoginResponse {
@@ -382,19 +261,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
   
-  // Permission checking functions
-  const hasPermission = (permission: Permission): boolean => {
+  // Permission checking functions (using shared functions)
+  const hasUserPermission = (permission: Permission): boolean => {
     if (!user) return false;
     const roleName = typeof user.role === 'string' ? user.role : user.role?.role_name;
-    return ROLE_PERMISSIONS[roleName as UserRole]?.includes(permission) || false;
+    return hasPermission(roleName as UserRole, permission);
   };
   
-  const hasAnyPermission = (permissions: Permission[]): boolean => {
-    return permissions.some(permission => hasPermission(permission));
+  const hasAnyUserPermission = (permissions: Permission[]): boolean => {
+    if (!user) return false;
+    const roleName = typeof user.role === 'string' ? user.role : user.role?.role_name;
+    return hasAnyPermission(roleName as UserRole, permissions);
   };
   
-  const hasAllPermissions = (permissions: Permission[]): boolean => {
-    return permissions.every(permission => hasPermission(permission));
+  const hasAllUserPermissions = (permissions: Permission[]): boolean => {
+    if (!user) return false;
+    const roleName = typeof user.role === 'string' ? user.role : user.role?.role_name;
+    return hasAllPermissions(roleName as UserRole, permissions);
   };
   
   // Resource ownership check
@@ -429,9 +312,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login,
     logout,
     refreshToken,
-    hasPermission,
-    hasAnyPermission,
-    hasAllPermissions,
+    hasPermission: hasUserPermission,
+    hasAnyPermission: hasAnyUserPermission,
+    hasAllPermissions: hasAllUserPermissions,
     isResourceOwner,
     isAdmin,
     isLibrarian,

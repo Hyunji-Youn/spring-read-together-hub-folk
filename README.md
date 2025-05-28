@@ -24,6 +24,56 @@
 
 **URL**: https://lovable.dev/projects/449f5f3a-555b-4b34-b83b-ef37d4d7111b
 
+## Shared Types
+
+This project uses a shared types package to maintain consistency between frontend and backend.
+
+### Installing Shared Types
+
+When you update the shared types, run:
+
+```bash
+# Linux/WSL
+./scripts/install-shared-types.sh
+
+# Windows
+scripts\install-shared-types.bat
+
+# Or using npm scripts
+npm run install:shared-types
+```
+
+### Development Setup
+
+1. Install dependencies for all packages:
+   ```bash
+   # Install frontend dependencies
+   npm install
+   
+   # Install backend dependencies
+   cd apps/backend
+   npm install
+   
+   # Install shared types dependencies
+   cd ../../shared/types
+   npm install
+   ```
+
+2. Install shared types:
+   ```bash
+   # From root directory
+   npm run install:shared-types
+   ```
+
+3. Start development servers:
+   ```bash
+   # Frontend (from root)
+   npm run dev
+   
+   # Backend (from apps/backend)
+   npm run dev
+   ```
+
 ## How can I edit this code?
 
 There are several ways of editing your application.
@@ -52,7 +102,10 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Install shared types.
+npm run install:shared-types
+
+# Step 5: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 

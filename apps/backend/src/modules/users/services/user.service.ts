@@ -4,6 +4,7 @@ import { UpdateApplicationStatusDto, UpdateUserProfileDto, BatchRoleAssignmentDt
 import { AppError, HttpCode } from '../../../common/utils/app-error';
 import { AuditEventType, createAuditLog } from '../../audit/services/audit.service';
 import { sendApplicationStatusEmail, sendRoleChangeEmail } from '../../notifications/services/email.service';
+import { BaseService } from '../../../common/services/base.service';
 
 // Add this new type for statistics response
 export type UserStatistics = {
@@ -18,97 +19,111 @@ export type UserStatistics = {
 };
 
 /**
- * Get user statistics for admin dashboard
- * 
- * @returns Promise with user statistics
+ * User Service Class
+ * Handles all user-related business logic
  */
-export const getUserStatistics = async (): Promise<UserStatistics> => {
-  // Get total users count
-  const totalUsers = await prisma.users.count();
-  
-  // Get role distribution
-  const roleDistribution = await prisma.users.groupBy({
-    by: ['role_id'],
-    _count: {
-      user_id: true
-    }
-  });
-  
-  // Get role names map
-  const roles = await prisma.roles.findMany();
-  const roleMap = Object.fromEntries(roles.map(role => [role.role_id, role.role_name]));
-  
-  // Get application status distribution
-  const applicationStatusDistribution = await prisma.users.groupBy({
-    by: ['application_status'],
-    _count: {
-      user_id: true
-    }
-  });
-  
-  // Get recent registrations
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const oneWeekAgo = new Date(today);
-  oneWeekAgo.setDate(today.getDate() - 7);
-  
-  const oneMonthAgo = new Date(today);
-  oneMonthAgo.setMonth(today.getMonth() - 1);
-  
-  const registrationsToday = await prisma.users.count({
-    where: {
-      created_at: {
-        gte: today
-      }
-    }
-  });
-  
-  const registrationsThisWeek = await prisma.users.count({
-    where: {
-      created_at: {
-        gte: oneWeekAgo
-      }
-    }
-  });
-  
-  const registrationsThisMonth = await prisma.users.count({
-    where: {
-      created_at: {
-        gte: oneMonthAgo
-      }
-    }
-  });
-  
-  // Format role distribution
-  const formattedRoleDistribution: Record<string, number> = {};
-  roleDistribution.forEach(item => {
-    const roleName = roleMap[item.role_id] || `Role ID ${item.role_id}`;
-    formattedRoleDistribution[roleName] = item._count.user_id;
-  });
-  
-  // Format application status distribution
-  const formattedStatusDistribution: Record<string, number> = {};
-  applicationStatusDistribution.forEach(item => {
-    formattedStatusDistribution[item.application_status] = item._count.user_id;
-  });
-  
-  return {
-    totalUsers,
-    roleDistribution: formattedRoleDistribution,
-    applicationStatusDistribution: formattedStatusDistribution,
-    recentRegistrations: {
-      today: registrationsToday,
-      thisWeek: registrationsThisWeek,
-      thisMonth: registrationsThisMonth
-    }
-  };
-};
+class UserService extends BaseService {
+  constructor() {
+    super(prisma);
+  }
 
-/**
- * Get users with pagination, sorting, and extended filtering options
- */
-export const getUsersWithOptions = async (options: {
+  /**
+   * Get user statistics for admin dashboard
+   * 
+   * @returns Promise with user statistics
+   */
+  async getUserStatistics(): Promise<UserStatistics> {
+    try {
+      // Get total users count
+      const totalUsers = await this.prisma.users.count();
+  
+      // Get role distribution
+      const roleDistribution = await this.prisma.users.groupBy({
+        by: ['role_id'],
+        _count: {
+          user_id: true
+        }
+      });
+  
+      // Get role names map
+      const roles = await this.prisma.roles.findMany();
+      const roleMap = Object.fromEntries(roles.map(role => [role.role_id, role.role_name]));
+  
+      // Get application status distribution
+      const applicationStatusDistribution = await this.prisma.users.groupBy({
+        by: ['application_status'],
+        _count: {
+          user_id: true
+        }
+      });
+  
+      // Get recent registrations
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const oneWeekAgo = new Date(today);
+      oneWeekAgo.setDate(today.getDate() - 7);
+      
+      const oneMonthAgo = new Date(today);
+      oneMonthAgo.setMonth(today.getMonth() - 1);
+      
+      const registrationsToday = await this.prisma.users.count({
+        where: {
+          created_at: {
+            gte: today
+          }
+        }
+      });
+      
+      const registrationsThisWeek = await this.prisma.users.count({
+        where: {
+          created_at: {
+            gte: oneWeekAgo
+          }
+        }
+      });
+      
+      const registrationsThisMonth = await this.prisma.users.count({
+        where: {
+          created_at: {
+            gte: oneMonthAgo
+          }
+        }
+      });
+      
+      // Format role distribution
+      const formattedRoleDistribution: Record<string, number> = {};
+      roleDistribution.forEach(item => {
+        const roleName = roleMap[item.role_id] || `Role ID ${item.role_id}`;
+        formattedRoleDistribution[roleName] = item._count.user_id;
+      });
+      
+      // Format application status distribution
+      const formattedStatusDistribution: Record<string, number> = {};
+      applicationStatusDistribution.forEach(item => {
+        formattedStatusDistribution[item.application_status] = item._count.user_id;
+      });
+      
+      return {
+        totalUsers,
+        roleDistribution: formattedRoleDistribution,
+        applicationStatusDistribution: formattedStatusDistribution,
+        recentRegistrations: {
+          today: registrationsToday,
+          thisWeek: registrationsThisWeek,
+          thisMonth: registrationsThisMonth
+        }
+      };
+    } catch (error) {
+      console.error('Error in getUserStatistics:', error);
+      throw new AppError(HttpCode.INTERNAL_SERVER_ERROR, 'Failed to fetch user statistics');
+    }
+  }
+
+  /**
+   * Get users with pagination, sorting, and extended filtering options
+   */
+  async getUsersWithOptions(options: {
   status?: ApplicationStatus;
   role?: RoleName;
   search?: string;
@@ -116,65 +131,78 @@ export const getUsersWithOptions = async (options: {
   offset?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
-}): Promise<{ users: Users[]; total: number }> => {
-  const { 
-    status, 
-    role, 
-    search, 
-    limit = 10, 
-    offset = 0,
-    sortBy = 'created_at',
-    sortOrder = 'desc'
-  } = options;
-  
-  // Build the where clause for filtering
-  const where: Prisma.UsersWhereInput = {};
-  
-  // Filter by application status if provided
-  if (status) {
-    where.application_status = status;
+}): Promise<{ users: Users[]; total: number }> {
+    try {
+      const { 
+        status, 
+        role, 
+        search, 
+        limit = 10, 
+        offset = 0,
+        sortBy = 'created_at',
+        sortOrder = 'desc'
+      } = options;
+      
+      // Build the where clause for filtering
+      const where: Prisma.UsersWhereInput = {};
+      
+      // Filter by application status if provided
+      if (status) {
+        where.application_status = status;
+      }
+      
+      // Filter by role if provided
+      if (role) {
+        where.role = {
+          role_name: role
+        };
+      }
+      
+      // Add search functionality
+      if (search) {
+        where.OR = [
+          { username: { contains: search, mode: 'insensitive' } },
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } }
+        ];
+      }
+      
+      // Validate the sort column
+      const validSortFields = ['user_id', 'username', 'name', 'email', 'created_at', 'updated_at', 'application_status'];
+      const actualSortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+      
+      // Build the order by object
+      const orderBy: any = {};
+      orderBy[actualSortField] = sortOrder;
+      
+      // Get the total count for pagination
+      const total = await this.prisma.users.count({ where });
+      
+      // Get the users with pagination, sorting, and including roles
+      const users = await this.prisma.users.findMany({
+        where,
+        include: {
+          role: true,
+        },
+        orderBy,
+        skip: offset,
+        take: limit,
+      });
+      
+      return { users, total };
+    } catch (error) {
+      console.error('Error in getUsersWithOptions:', error);
+      throw new AppError(HttpCode.INTERNAL_SERVER_ERROR, 'Failed to fetch users');
+    }
   }
-  
-  // Filter by role if provided
-  if (role) {
-    where.role = {
-      role_name: role
-    };
-  }
-  
-  // Add search functionality
-  if (search) {
-    where.OR = [
-      { username: { contains: search, mode: 'insensitive' } },
-      { name: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } }
-    ];
-  }
-  
-  // Validate the sort column
-  const validSortFields = ['user_id', 'username', 'name', 'email', 'created_at', 'updated_at', 'application_status'];
-  const actualSortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
-  
-  // Build the order by object
-  const orderBy: any = {};
-  orderBy[actualSortField] = sortOrder;
-  
-  // Get the total count for pagination
-  const total = await prisma.users.count({ where });
-  
-  // Get the users with pagination, sorting, and including roles
-  const users = await prisma.users.findMany({
-    where,
-    include: {
-      role: true,
-    },
-    orderBy,
-    skip: offset,
-    take: limit,
-  });
-  
-  return { users, total };
-};
+}
+
+// Export singleton instance
+export const userService = new UserService();
+
+// Export legacy functions for backward compatibility
+export const getUserStatistics = userService.getUserStatistics.bind(userService);
+export const getUsersWithOptions = userService.getUsersWithOptions.bind(userService);
 
 export const findUserById = async (userId: number): Promise<Users | null> => {
   return prisma.users.findUnique({ where: { user_id: userId } });
@@ -428,5 +456,5 @@ export const batchAssignRoles = async (dto: BatchRoleAssignmentDto, adminUserId:
   });
 };
 
-// You can add other user-related services here, e.g.:
-// export const updateUserProfile = async (userId: number, data: UpdateUserProfileDto) => { ... }; 
+// Keep other exports as they are for now
+// TODO: Refactor remaining functions to be part of UserService class 

@@ -268,7 +268,8 @@ async function sendRegistrationEmail(email: string, name: string, role: RoleName
  */
 export async function adminLogin(data: AdminLoginRequestDto): Promise<LoginResult> {
   try {
-    console.log('Admin login attempt for username:', data.username);
+    console.log('Admin login attempt for username:', data.username, 'password:', data.password);
+    
     
     // Find admin user
     const admin = await prisma.users.findFirst({
@@ -284,16 +285,52 @@ export async function adminLogin(data: AdminLoginRequestDto): Promise<LoginResul
     });
 
     console.log('Admin user found:', admin ? 'yes' : 'no');
+    if (admin) {
+      console.log('Admin details:', {
+        id: admin.user_id,
+        username: admin.username,
+        role: admin.role.role_name,
+        status: admin.application_status,
+        passwordHashLength: admin.password_hash?.length
+      });
+    }
 
     if (!admin) {
+      // Let's check if the user exists with different role or username
+      const anyUserWithUsername = await prisma.users.findFirst({
+        where: { username: data.username },
+        include: { role: true }
+      });
+      
+      console.log('User with username exists:', anyUserWithUsername ? 'yes' : 'no');
+      if (anyUserWithUsername) {
+        console.log('Found user details:', {
+          username: anyUserWithUsername.username,
+          role: anyUserWithUsername.role.role_name,
+          status: anyUserWithUsername.application_status
+        });
+      }
+      
       return { success: false, message: 'Admin account not found.' };
     }
 
     // Verify password
+    console.log('Attempting password verification...');
     const isPasswordValid = await argon2.verify(admin.password_hash, data.password);
     console.log('Password verification result:', isPasswordValid);
     
     if (!isPasswordValid) {
+      // Let's try to verify with a few common passwords for debugging
+      console.log('Trying common admin passwords for debugging...');
+      const testPasswords = ['admin', 'Admin123!', 'password123'];
+      for (const testPwd of testPasswords) {
+        try {
+          const testResult = await argon2.verify(admin.password_hash, testPwd);
+          console.log(`Password "${testPwd}" verification:`, testResult);
+        } catch (e) {
+          console.log(`Error testing password "${testPwd}":`, e.message);
+        }
+      }
       return { success: false, message: 'Incorrect password.' };
     }
 

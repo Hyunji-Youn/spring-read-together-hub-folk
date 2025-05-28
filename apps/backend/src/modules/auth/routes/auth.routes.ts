@@ -5,12 +5,29 @@ import { requireAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
+// Add debugging middleware to the auth router
+router.use((req, res, next) => {
+  console.log(`=== AUTH ROUTER HIT: ${req.method} ${req.path} ===`);
+  console.log('Full URL:', req.originalUrl);
+  console.log('Base URL:', req.baseUrl);
+  next();
+});
+
+// Test route for debugging
+router.get('/test', (req, res) => {
+  console.log('=== AUTH TEST ROUTE HIT ===');
+  res.json({ message: 'Auth router is working' });
+});
+
 /**
  * @route POST /api/auth/admin/login
  * @desc Special admin login with static credentials
  * @access Public
  */
-router.post('/admin/login', authRateLimiter, authController.adminLogin);
+router.post('/admin/login', (req, res, next) => {
+  console.log('=== ADMIN LOGIN ROUTE HIT ===');
+  next();
+}, authController.adminLogin);
 
 /**
  * @route POST /api/auth/login

@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError, HttpCode } from '../common/utils/app-error';
+import { ApiResponseHelper } from '../common/utils/api-response';
+import { ZodError } from 'zod';
+import Logger from '../common/utils/logger';
 
 /**
  * Global error handling middleware
@@ -12,7 +15,18 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error('Error:', error);
+  // Enhanced error logging with context
+  Logger.error('Global error handler triggered', error, 'ERROR_MIDDLEWARE');
+  
+  // Log request context that led to the error
+  Logger.error('Error request context', {
+    method: req.method,
+    url: req.originalUrl,
+    userAgent: req.headers['user-agent'],
+    ip: req.ip,
+    userId: (req as any).user?.id,
+    username: (req as any).user?.username
+  }, 'ERROR_CONTEXT');
 
   // Default error values
   let statusCode = HttpCode.INTERNAL_SERVER_ERROR;
@@ -43,18 +57,32 @@ export const errorHandler = (
     isOperational = true;
   }
 
-  // Send error response
-  res.status(statusCode).json({
+  // Handle different error types with appropriate responses
+  if (error instanceof ZodError) {
+    const validationErrors = error.errors.map(err => ({
+      field: err.path.join('.'),
+      message: err.message
+    }));
+    return ApiResponseHelper.validationError(res, validationErrors);
+  }
+  
+  // Send standardized error response
+  const errorResponse = {
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && {
-      error: {
-        name: errorName,
-        stack: error.stack,
-        isOperational
-      }
-    })
-  });
+    meta: {
+      timestamp: new Date().toISOString(),
+      ...(process.env.NODE_ENV === 'development' && {
+        error: {
+          name: errorName,
+          stack: error.stack,
+          isOperational
+        }
+      })
+    }
+  };
+  
+  res.status(statusCode).json(errorResponse);
 };
 
 /**
@@ -63,8 +91,12 @@ export const errorHandler = (
  * Handles requests to non-existent routes
  */
 export const notFoundHandler = (req: Request, res: Response) => {
-  res.status(HttpCode.NOT_FOUND).json({
-    success: false,
-    message: `Route not found: ${req.originalUrl}`
-  });
+  Logger.warn('Route not found', {
+    method: req.method,
+    url: req.originalUrl,
+    userAgent: req.headers['user-agent'],
+    ip: req.ip
+  }, 'NOT_FOUND');
+  
+  ApiResponseHelper.notFound(res, `Route not found: ${req.originalUrl}`);
 }; 

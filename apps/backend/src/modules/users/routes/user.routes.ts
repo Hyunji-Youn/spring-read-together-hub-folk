@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as userController from '../controllers/user.controller';
-import { requireAuth, requireAdmin, requireLibrarianOrAdmin } from '../../auth/middleware/auth.middleware';
-import { Permission, requirePermission } from '../../auth/middleware/auth.middleware';
+import { requireAuth, requireAdmin, requireLibrarianOrAdmin, requirePermission } from '../../auth/middleware/auth.middleware';
+import { Permission } from '@spring-book-club/shared-types';
 
 const router = Router();
 
@@ -30,7 +30,7 @@ router.get(
 router.get(
   '/',
   requireAuth,
-  requirePermission(Permission.ViewUsers),
+  requirePermission(Permission.VIEW_USERS),
   userController.getUsers
 );
 

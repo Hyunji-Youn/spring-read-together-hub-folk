@@ -14,6 +14,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isMobile }) => {
       <div className="absolute right-0 top-0 flex items-center">
         <input 
           type="text" 
+          id="mobile-search"
+          name="search"
           placeholder="Search" 
           className="pl-2 pr-8 py-1 bg-transparent border-b border-bookish-maroon/50 focus:outline-none focus:border-bookish-maroon text-sm w-full" 
           autoFocus
@@ -36,6 +38,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isMobile }) => {
     <div className="relative">
       <input 
         type="text" 
+        id="desktop-search"
+        name="search"
         placeholder="Search" 
         className="pl-2 pr-8 py-1 bg-transparent border-b border-bookish-maroon/50 focus:outline-none focus:border-bookish-maroon text-sm" 
       />

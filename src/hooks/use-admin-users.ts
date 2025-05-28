@@ -11,6 +11,7 @@ import {
   UserStatistics,
   AuditLogEntry
 } from '../services/user.service';
+import { useAuth } from '../contexts/auth-context';
 
 // Define rate limit error type for better handling
 interface RateLimitError {
@@ -21,6 +22,8 @@ interface RateLimitError {
 
 // Hook for user statistics
 export const useUserStatistics = () => {
+  const { isAuthenticated, isAdmin } = useAuth();
+  
   return useQuery({
     queryKey: ['admin-statistics'],
     queryFn: async () => {
@@ -41,13 +44,31 @@ export const useUserStatistics = () => {
             message: 'Rate limit exceeded. Please try again later.'
           } as RateLimitError;
         }
+        
+        // Handle authentication errors
+        if (axiosError.response?.status === 401) {
+          throw {
+            isAuthError: true,
+            message: 'Please log in to access this data.'
+          };
+        }
+        
+        // Handle authorization errors
+        if (axiosError.response?.status === 403) {
+          throw {
+            isAuthError: true,
+            message: 'You do not have permission to access this data.'
+          };
+        }
+        
         throw error;
       }
     },
+    enabled: isAuthenticated && isAdmin(), // Only run if user is authenticated and has admin access
     retry: (failureCount, error) => {
-      // Don't retry on rate limit errors
+      // Don't retry on rate limit errors or auth errors
       const err = error as any;
-      if (err.isRateLimit) {
+      if (err.isRateLimit || err.isAuthError) {
         return false;
       }
       // Retry up to 3 times for other errors
@@ -66,6 +87,8 @@ export const useFilteredUsers = (options: {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }) => {
+  const { isAuthenticated, isAdmin } = useAuth();
+  
   return useQuery({
     queryKey: ['admin-filtered-users', options],
     queryFn: async () => {
@@ -86,13 +109,31 @@ export const useFilteredUsers = (options: {
             message: 'Rate limit exceeded. Please try again later.'
           } as RateLimitError;
         }
+        
+        // Handle authentication errors
+        if (axiosError.response?.status === 401) {
+          throw {
+            isAuthError: true,
+            message: 'Please log in to access this data.'
+          };
+        }
+        
+        // Handle authorization errors
+        if (axiosError.response?.status === 403) {
+          throw {
+            isAuthError: true,
+            message: 'You do not have permission to access this data.'
+          };
+        }
+        
         throw error;
       }
     },
+    enabled: isAuthenticated && isAdmin(), // Only run if user is authenticated and has admin access
     retry: (failureCount, error) => {
-      // Don't retry on rate limit errors
+      // Don't retry on rate limit errors or auth errors
       const err = error as any;
-      if (err.isRateLimit) {
+      if (err.isRateLimit || err.isAuthError) {
         return false;
       }
       // Retry up to 3 times for other errors
@@ -110,6 +151,8 @@ export const useAuditLogs = (options: {
   limit?: number;
   offset?: number;
 }) => {
+  const { isAuthenticated, isAdmin } = useAuth();
+  
   return useQuery({
     queryKey: ['admin-audit-logs', options],
     queryFn: async () => {
@@ -130,13 +173,31 @@ export const useAuditLogs = (options: {
             message: 'Rate limit exceeded. Please try again later.'
           } as RateLimitError;
         }
+        
+        // Handle authentication errors
+        if (axiosError.response?.status === 401) {
+          throw {
+            isAuthError: true,
+            message: 'Please log in to access this data.'
+          };
+        }
+        
+        // Handle authorization errors
+        if (axiosError.response?.status === 403) {
+          throw {
+            isAuthError: true,
+            message: 'You do not have permission to access this data.'
+          };
+        }
+        
         throw error;
       }
     },
+    enabled: isAuthenticated && isAdmin(), // Only run if user is authenticated and has admin access
     retry: (failureCount, error) => {
-      // Don't retry on rate limit errors
+      // Don't retry on rate limit errors or auth errors
       const err = error as any;
-      if (err.isRateLimit) {
+      if (err.isRateLimit || err.isAuthError) {
         return false;
       }
       // Retry up to 3 times for other errors
@@ -147,6 +208,7 @@ export const useAuditLogs = (options: {
 
 export const useAdminUsers = (applicationStatus?: string) => {
   const queryClient = useQueryClient();
+  const { isAuthenticated, isAdmin } = useAuth();
 
   // Query to get all users
   const { data: users, isLoading, error, refetch } = useQuery({
@@ -169,13 +231,31 @@ export const useAdminUsers = (applicationStatus?: string) => {
             message: 'Rate limit exceeded. Please try again later.'
           } as RateLimitError;
         }
+        
+        // Handle authentication errors
+        if (axiosError.response?.status === 401) {
+          throw {
+            isAuthError: true,
+            message: 'Please log in to access this data.'
+          };
+        }
+        
+        // Handle authorization errors
+        if (axiosError.response?.status === 403) {
+          throw {
+            isAuthError: true,
+            message: 'You do not have permission to access this data.'
+          };
+        }
+        
         throw error;
       }
     },
+    enabled: isAuthenticated && isAdmin(), // Only run if user is authenticated and has admin access
     retry: (failureCount, error) => {
-      // Don't retry on rate limit errors
+      // Don't retry on rate limit errors or auth errors
       const err = error as any;
-      if (err.isRateLimit) {
+      if (err.isRateLimit || err.isAuthError) {
         return false;
       }
       // Retry up to 3 times for other errors

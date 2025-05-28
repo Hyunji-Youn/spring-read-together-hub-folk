@@ -5,7 +5,7 @@ import axios from 'axios';
  * Handles API requests and JWT authentication (RS256)
  */
 
-// Set absolute HTTPS API URL
+// Set absolute HTTPS API URL for secure development
 const API_URL = 'https://localhost:3000/api';
 
 // Disable API request and response logging (security enhancement)

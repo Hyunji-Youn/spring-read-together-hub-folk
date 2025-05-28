@@ -2,137 +2,40 @@ import { Request, Response, NextFunction } from 'express';
 import { RoleName } from '@prisma/client';
 import { prisma } from '../config/database';
 import { AppError, HttpCode } from '../common/utils/app-error';
+import { 
+  UserRole, 
+  Permission, 
+  ROLE_PERMISSIONS, 
+  hasPermission, 
+  hasAnyPermission, 
+  hasAllPermissions 
+} from '@spring-book-club/shared-types';
 
-// Define the permissions for each resource
-export enum Permission {
-  // User management
-  VIEW_USERS = 'view:users',
-  CREATE_USER = 'create:user',
-  EDIT_USER = 'edit:user',
-  APPROVE_USER = 'approve:user',
-  DELETE_USER = 'delete:user',
-  
-  // Content
-  VIEW_PUBLIC_CONTENT = 'view:public-content',
-  VIEW_MEMBER_CONTENT = 'view:member-content',
-  CREATE_POST = 'create:post',
-  EDIT_OWN_POST = 'edit:own-post',
-  EDIT_ANY_POST = 'edit:any-post',
-  DELETE_OWN_POST = 'delete:own-post',
-  DELETE_ANY_POST = 'delete:any-post',
-  
-  // Materials
-  UPLOAD_MATERIAL = 'upload:material',
-  EDIT_OWN_MATERIAL = 'edit:own-material',
-  EDIT_ANY_MATERIAL = 'edit:any-material',
-  DELETE_OWN_MATERIAL = 'delete:own-material',
-  DELETE_ANY_MATERIAL = 'delete:any-material',
-  
-  // Events
-  VIEW_EVENTS = 'view:events',
-  CREATE_EVENT = 'create:event',
-  EDIT_EVENT = 'edit:event',
-  DELETE_EVENT = 'delete:event',
-  
-  // Chat (Sudabang)
-  USE_CHAT = 'use:chat',
-  DELETE_OWN_CHAT = 'delete:own-chat',
-  DELETE_ANY_CHAT = 'delete:any-chat',
+// Using shared Permission enum from @spring-book-club/shared-types
+
+// Using shared ROLE_PERMISSIONS from @spring-book-club/shared-types
+// Helper to convert RoleName to UserRole
+const roleNameToUserRole = {
+  [RoleName.Admin]: UserRole.Admin,
+  [RoleName.Librarian]: UserRole.Librarian,
+  [RoleName.Member]: UserRole.Member,
+  [RoleName.PotentialMember]: UserRole.PotentialMember,
+} as const;
+
+// Helper functions that wrap shared permission functions
+function hasRolePermission(role: RoleName, permission: Permission): boolean {
+  const userRole = roleNameToUserRole[role];
+  return hasPermission(userRole, permission);
 }
 
-// Map roles to permissions
-const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
-  [RoleName.Admin]: [
-    // All permissions except DELETE_USER
-    Permission.VIEW_USERS,
-    Permission.CREATE_USER,
-    Permission.EDIT_USER,
-    Permission.APPROVE_USER,
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.EDIT_ANY_POST,
-    Permission.DELETE_OWN_POST,
-    Permission.DELETE_ANY_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.EDIT_ANY_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    Permission.DELETE_ANY_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    Permission.CREATE_EVENT,
-    Permission.EDIT_EVENT,
-    Permission.DELETE_EVENT,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-    Permission.DELETE_ANY_CHAT,
-  ],
-  
-  [RoleName.Librarian]: [
-    Permission.VIEW_USERS,
-    Permission.DELETE_USER, // Only Librarians can delete users
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.DELETE_OWN_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    Permission.CREATE_EVENT, // Librarians can manage events
-    Permission.EDIT_EVENT,
-    Permission.DELETE_EVENT,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-  ],
-  
-  [RoleName.Member]: [
-    Permission.VIEW_USERS,
-    
-    Permission.VIEW_PUBLIC_CONTENT,
-    Permission.VIEW_MEMBER_CONTENT,
-    Permission.CREATE_POST,
-    Permission.EDIT_OWN_POST,
-    Permission.DELETE_OWN_POST,
-    
-    Permission.UPLOAD_MATERIAL,
-    Permission.EDIT_OWN_MATERIAL,
-    Permission.DELETE_OWN_MATERIAL,
-    
-    Permission.VIEW_EVENTS,
-    
-    Permission.USE_CHAT,
-    Permission.DELETE_OWN_CHAT,
-  ],
-  
-  [RoleName.PotentialMember]: [
-    Permission.VIEW_PUBLIC_CONTENT,
-  ],
-};
-
-// Check if a role has a specific permission
-function hasPermission(role: RoleName, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role]?.includes(permission) || false;
+function hasAnyRolePermission(role: RoleName, permissions: Permission[]): boolean {
+  const userRole = roleNameToUserRole[role];
+  return hasAnyPermission(userRole, permissions);
 }
 
-// Check if a role has any of the specified permissions
-function hasAnyPermission(role: RoleName, permissions: Permission[]): boolean {
-  return permissions.some(permission => hasPermission(role, permission));
-}
-
-// Check if a role has all of the specified permissions
-function hasAllPermissions(role: RoleName, permissions: Permission[]): boolean {
-  return permissions.every(permission => hasPermission(role, permission));
+function hasAllRolePermissions(role: RoleName, permissions: Permission[]): boolean {
+  const userRole = roleNameToUserRole[role];
+  return hasAllPermissions(userRole, permissions);
 }
 
 // Middleware to require a specific permission
@@ -144,7 +47,7 @@ export function requirePermission(permission: Permission) {
     
     const userRole = req.user.role as RoleName;
     
-    if (hasPermission(userRole, permission)) {
+    if (hasRolePermission(userRole as RoleName, permission)) {
       return next();
     }
     
@@ -161,7 +64,7 @@ export function requireAnyPermission(permissions: Permission[]) {
     
     const userRole = req.user.role as RoleName;
     
-    if (hasAnyPermission(userRole, permissions)) {
+    if (hasAnyRolePermission(userRole as RoleName, permissions)) {
       return next();
     }
     
@@ -178,7 +81,7 @@ export function requireAllPermissions(permissions: Permission[]) {
     
     const userRole = req.user.role as RoleName;
     
-    if (hasAllPermissions(userRole, permissions)) {
+    if (hasAllRolePermissions(userRole as RoleName, permissions)) {
       return next();
     }
     
@@ -195,7 +98,7 @@ export function requireResourceOwnership(
       return next(new AppError(HttpCode.UNAUTHORIZED, '인증이 필요합니다.'));
     }
     
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const userRole = req.user.role as RoleName;
     
     // If user is an admin, they can access any resource

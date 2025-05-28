@@ -31,8 +31,8 @@ export const env = {
   JWT_PRIVATE_KEY: process.env.JWT_PRIVATE_KEY || '', // RS256 private key
   JWT_PUBLIC_KEY: process.env.JWT_PUBLIC_KEY || '', // RS256 public key
   
-  // CORS 설정
-  CORS_ORIGIN: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // CORS 설정 - Use HTTPS for secure development
+  CORS_ORIGIN: process.env.CORS_ORIGIN || 'https://localhost:5173',
   
   // 이메일 설정 (관리자 이메일 주소 고정)
   ADMIN_EMAIL: '00@gmail.com',

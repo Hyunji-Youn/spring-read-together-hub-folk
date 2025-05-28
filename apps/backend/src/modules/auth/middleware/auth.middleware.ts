@@ -2,6 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { jwtService, JwtPayload } from '../services/jwt.service';
 import { RoleName } from '@prisma/client';
 import { prisma } from '../../../config/database';
+import { 
+  UserRole, 
+  Permission, 
+  ROLE_PERMISSIONS, 
+  hasPermission, 
+  hasAnyPermission, 
+  hasAllPermissions 
+} from '@spring-book-club/shared-types';
 
 // Extend Express Request with user info
 declare global {
@@ -9,7 +17,7 @@ declare global {
     interface Request {
       user?: {
         id: number;
-        role: RoleName;
+        role: RoleName | UserRole;
         email?: string;
         username?: string;
       };
@@ -100,157 +108,47 @@ export const requireLibrarianOrAdmin = requireRole([RoleName.Admin, RoleName.Lib
  */
 export const requireMember = requireRole([RoleName.Admin, RoleName.Librarian, RoleName.Member]);
 
-/**
- * Define a permission enum for granular access control
- */
-export enum Permission {
-  // User management
-  ViewUsers = 'view:users',
-  CreateUser = 'create:user',
-  UpdateUser = 'update:user',
-  DeleteUser = 'delete:user',
-  
-  // Content management
-  ViewContent = 'view:content',
-  CreatePost = 'create:post',
-  UpdatePost = 'update:post',
-  DeletePost = 'delete:post',
-  
-  // Material management
-  ViewMaterial = 'view:material',
-  CreateMaterial = 'create:material',
-  UpdateMaterial = 'update:material',
-  DeleteMaterial = 'delete:material',
-  
-  // Schedule management
-  ViewSchedule = 'view:schedule',
-  CreateSchedule = 'create:schedule',
-  UpdateSchedule = 'update:schedule',
-  DeleteSchedule = 'delete:schedule',
-  
-  // Comment management
-  CreateComment = 'create:comment',
-  UpdateComment = 'update:comment',
-  DeleteComment = 'delete:comment',
-  
-  // Read book management
-  ViewReadBook = 'view:readbook',
-  CreateReadBook = 'create:readbook',
-  UpdateReadBook = 'update:readbook',
-  DeleteReadBook = 'delete:readbook'
-}
+// Using shared Permission enum from @spring-book-club/shared-types
 
-/**
- * Map roles to permissions
- */
-const ROLE_PERMISSIONS: Record<RoleName, Permission[]> = {
-  [RoleName.Admin]: [
-    // Admin has all permissions except DeleteUser (as specified in the PRD)
-    Permission.ViewUsers,
-    Permission.CreateUser,
-    Permission.UpdateUser,
-    
-    Permission.ViewContent,
-    Permission.CreatePost,
-    Permission.UpdatePost,
-    Permission.DeletePost,
-    
-    Permission.ViewMaterial,
-    Permission.CreateMaterial,
-    Permission.UpdateMaterial,
-    Permission.DeleteMaterial,
-    
-    Permission.ViewSchedule,
-    Permission.CreateSchedule,
-    Permission.UpdateSchedule,
-    Permission.DeleteSchedule,
-    
-    Permission.CreateComment,
-    Permission.UpdateComment,
-    Permission.DeleteComment,
-    
-    Permission.ViewReadBook,
-    Permission.CreateReadBook,
-    Permission.UpdateReadBook,
-    Permission.DeleteReadBook
-  ],
-  [RoleName.Librarian]: [
-    // Librarians have content management + DeleteUser permissions
-    Permission.ViewUsers,
-    Permission.UpdateUser,
-    Permission.DeleteUser,
-    
-    Permission.ViewContent,
-    Permission.CreatePost,
-    Permission.UpdatePost,
-    Permission.DeletePost,
-    
-    Permission.ViewMaterial,
-    Permission.CreateMaterial,
-    Permission.UpdateMaterial,
-    Permission.DeleteMaterial,
-    
-    Permission.ViewSchedule,
-    Permission.CreateSchedule,
-    Permission.UpdateSchedule,
-    Permission.DeleteSchedule,
-    
-    Permission.CreateComment,
-    Permission.UpdateComment,
-    Permission.DeleteComment,
-    
-    Permission.ViewReadBook,
-    Permission.CreateReadBook,
-    Permission.UpdateReadBook,
-    Permission.DeleteReadBook
-  ],
-  [RoleName.Member]: [
-    // Members have basic access
-    Permission.ViewUsers,
-    
-    Permission.ViewContent,
-    Permission.CreatePost,
-    Permission.UpdatePost, // Can update own posts only
-    Permission.DeletePost, // Can delete own posts only
-    
-    Permission.ViewMaterial,
-    Permission.CreateMaterial,
-    
-    Permission.ViewSchedule,
-    
-    Permission.CreateComment,
-    Permission.UpdateComment, // Can update own comments only
-    Permission.DeleteComment, // Can delete own comments only
-    
-    Permission.ViewReadBook,
-    Permission.CreateReadBook
-  ],
-  [RoleName.PotentialMember]: [
-    // Potential members can only view public content
-    Permission.ViewContent,
-    Permission.ViewReadBook
-  ]
+// Using shared ROLE_PERMISSIONS from @spring-book-club/shared-types
+// Note: We need to map RoleName to UserRole for compatibility
+const roleNameToUserRole = {
+  [RoleName.Admin]: UserRole.Admin,
+  [RoleName.Librarian]: UserRole.Librarian,
+  [RoleName.Member]: UserRole.Member,
+  [RoleName.PotentialMember]: UserRole.PotentialMember,
+} as const;
+
+// Helper function to convert RoleName to UserRole
+const convertRoleNameToUserRole = (role: RoleName | UserRole): UserRole => {
+  if (typeof role === 'string') {
+    return roleNameToUserRole[role as RoleName] || role as UserRole;
+  }
+  return role;
 };
 
 /**
- * Check if a role has a specific permission
+ * Check if a role has a specific permission (wrapper for shared function)
  */
-export const hasPermission = (role: RoleName, permission: Permission): boolean => {
-  return ROLE_PERMISSIONS[role]?.includes(permission) || false;
+export const hasRolePermission = (role: RoleName, permission: Permission): boolean => {
+  const userRole = roleNameToUserRole[role];
+  return hasPermission(userRole, permission);
 };
 
 /**
- * Check if a role has any of the given permissions
+ * Check if a role has any of the given permissions (wrapper for shared function)
  */
-export const hasAnyPermission = (role: RoleName, permissions: Permission[]): boolean => {
-  return permissions.some(permission => hasPermission(role, permission));
+export const hasAnyRolePermission = (role: RoleName, permissions: Permission[]): boolean => {
+  const userRole = roleNameToUserRole[role];
+  return hasAnyPermission(userRole, permissions);
 };
 
 /**
- * Check if a role has all of the given permissions
+ * Check if a role has all of the given permissions (wrapper for shared function)
  */
-export const hasAllPermissions = (role: RoleName, permissions: Permission[]): boolean => {
-  return permissions.every(permission => hasPermission(role, permission));
+export const hasAllRolePermissions = (role: RoleName, permissions: Permission[]): boolean => {
+  const userRole = roleNameToUserRole[role];
+  return hasAllPermissions(userRole, permissions);
 };
 
 /**
@@ -266,7 +164,7 @@ export const requirePermission = (permission: Permission) => {
       });
     }
 
-    if (!hasPermission(req.user.role, permission)) {
+    if (!hasRolePermission(req.user.role, permission)) {
       return res.status(403).json({ 
         success: false, 
         message: `Access denied: You don't have the required permission (${permission})` 
@@ -314,7 +212,7 @@ export const requireAllPermissions = (permissions: Permission[]) => {
       });
     }
 
-    if (!hasAllPermissions(req.user.role, permissions)) {
+    if (!hasAllRolePermissions(req.user.role as RoleName, permissions)) {
       return res.status(403).json({ 
         success: false, 
         message: `Access denied: You don't have all the required permissions` 

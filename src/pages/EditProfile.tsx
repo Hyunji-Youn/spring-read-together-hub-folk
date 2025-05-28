@@ -121,6 +121,8 @@ export default function EditProfile() {
                     <div className="space-y-2">
                       <FormLabel className="text-muted-foreground">Username (ID)</FormLabel>
                       <Input 
+                        id="username"
+                        name="username"
                         value={profile.username} 
                         disabled
                         className="bg-muted"

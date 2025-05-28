@@ -10,9 +10,18 @@ import { AuditEventType, createAuditLog } from '../../audit/services/audit.servi
  */
 export async function getUserStatistics(req: Request, res: Response, next: NextFunction) {
   try {
+    console.log('Getting user statistics...');
+    console.log('User info from token:', {
+      id: req.user?.id,
+      role: req.user?.role,
+      username: req.user?.username
+    });
+    
     const stats = await userService.getUserStatistics();
+    console.log('Statistics result:', stats);
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
+    console.error('Error in getUserStatistics controller:', error);
     next(error);
   }
 }

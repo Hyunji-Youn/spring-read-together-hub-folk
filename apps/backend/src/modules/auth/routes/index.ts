@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
-import { authMiddleware } from '../../../middlewares/auth.middleware';
+import { requireAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.post('/login', authController.login);
 router.post('/register', authController.register);
 
 // 로그아웃 라우트
-router.post('/logout', authMiddleware, authController.logout);
+router.post('/logout', requireAuth, authController.logout);
 
 // 토큰 갱신 라우트는 필요시 나중에 추가
 
